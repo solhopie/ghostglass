@@ -37,6 +37,7 @@ import {
   sanitizeLoneSurrogates,
 } from "../src/export/sanitize.js";
 import { scrubInlineScript } from "../src/export/htmlBuilder.js";
+import { readPackageVersion } from "../src/cli/version.js";
 
 const BASE = 1_750_000_000_000;
 const RUN_A = "gg_20260930_910";
@@ -207,7 +208,7 @@ describe("run HTML export", () => {
     assert.equal(env.format, "ghostglass-html");
     assert.equal(env.formatVersion, 1);
     assert.equal(env.type, "run");
-    assert.equal(env.ghostglassVersion, "0.4.0");
+    assert.equal(env.ghostglassVersion, readPackageVersion());
     assert.equal(env.exportedAt, "2026-09-30T00:00:00.000Z");
     assert.deepEqual(env.route, { kind: "run", runId: RUN_A });
     assert.ok(html.includes(`<title>GhostGlass — ${RUN_A}`));
@@ -305,7 +306,7 @@ describe("JSON export", () => {
     assert.equal(json.format, "ghostglass-json");
     assert.equal(json.formatVersion, 1);
     assert.equal(json.type, "run");
-    assert.equal(json.ghostglassVersion, "0.4.0");
+    assert.equal(json.ghostglassVersion, readPackageVersion());
     assert.equal(json.exportedAt, "2026-09-30T00:00:00.000Z");
     assert.equal(json.metadata.runId, RUN_A);
     assert.ok(Array.isArray(json.events) && json.events.length > 0);

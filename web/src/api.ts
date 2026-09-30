@@ -56,3 +56,20 @@ export function getDiff(runA: string, runB: string): Promise<RunDiff> {
     `/api/diff/${encodeURIComponent(runA)}/${encodeURIComponent(runB)}`,
   );
 }
+
+/** Live session status, served by the backend while (and just after) a watched command runs. */
+export interface LiveStatusPayload {
+  runId: string;
+  status: "running" | "complete" | "interrupted" | "exited";
+  commandLine: string;
+  startTimeMs: number;
+  durationMs: number;
+  exitCode: number | null;
+  signal: string | null;
+  interrupted: boolean;
+  eventCount: number;
+}
+
+export function getLiveStatus(runId: string): Promise<LiveStatusPayload> {
+  return getJson(`/api/live/${encodeURIComponent(runId)}/status`);
+}

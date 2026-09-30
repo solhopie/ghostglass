@@ -47,6 +47,11 @@ export class Store {
   /** Node ids to visually emphasize (event click → related nodes). */
   spotlight: string[] = [];
   follow = true;
+  /**
+   * Live mode only: while true the UI reduces expensive animation
+   * (no node pulses, slower graph emits). Saved runs never set this.
+   */
+  highActivity = false;
 
   readonly nodeById = new Map<string, GraphNode>();
   private readonly pidLabels = new Map<number, string>();

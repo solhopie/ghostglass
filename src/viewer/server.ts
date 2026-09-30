@@ -33,11 +33,18 @@ import type { ApiEventsPage, ApiGraph, ApiRunDetail, ApiRunListItem, ApiTimeline
 import { compareRuns } from "../diff/compareRuns.js";
 import { loadRunData } from "../diff/loadRuns.js";
 import type { RunDiff } from "../diff/types.js";
+import type { LiveSessionLike, LiveSubscriber } from "../live/liveSession.js";
 
 export const DEFAULT_VIEWER_PORT = 7777;
 export const VIEWER_HOST = "127.0.0.1";
 const MAX_PORT_ATTEMPTS = 10;
 const MAX_PAGE_LIMIT = 5000;
+/** Max events per SSE replay message; larger histories are chunked. */
+const SSE_REPLAY_CHUNK = 2000;
+/** SSE ping interval, keeping idle connections (and proxies) alive. */
+const SSE_PING_MS = 15_000;
+/** Per-connection buffered-bytes ceiling before we ask the client to resync. */
+const SSE_MAX_BUFFERED = 2 * 1024 * 1024;
 
 const WEB_DIST = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -82,6 +89,7 @@ export class ViewerServer {
   private server: Server | null = null;
   private cache = new Map<string, CachedRun>();
   private diffCache = new Map<string, RunDiff>();
+  private liveSessions = new Map<string, LiveSessionLike>();
   private readonly cwd: string;
   private readonly host: string;
   private readonly preferredPort: number;
@@ -91,6 +99,17 @@ export class ViewerServer {
     this.cwd = opts.cwd;
     this.host = opts.host ?? VIEWER_HOST;
     this.preferredPort = opts.port ?? DEFAULT_VIEWER_PORT;
+  }
+
+  /** Register a live session so its SSE/status endpoints become available. */
+  registerLiveSession(session: LiveSessionLike): void {
+    this.liveSessions.set(session.runId, session);
+  }
+
+  /** Remove a live session (after finalization); drops cached run data. */
+  unregisterLiveSession(runId: string): void {
+    this.liveSessions.delete(runId);
+    this.cache.delete(runId);
   }
 
   get port(): number | null {
@@ -155,10 +174,18 @@ export class ViewerServer {
     if (cached) return cached;
     if (!(await runDirExists(this.cwd, runId))) return null;
     const dir = this.runDir(runId);
-    const [metadata, summary] = await Promise.all([
-      readJsonFile<RunMetadata>(join(dir, "metadata.json")),
-      readJsonFile<RunSummary>(join(dir, "summary.json")),
-    ]);
+    let metadata: RunMetadata;
+    let summary: RunSummary;
+    try {
+      [metadata, summary] = await Promise.all([
+        readJsonFile<RunMetadata>(join(dir, "metadata.json")),
+        readJsonFile<RunSummary>(join(dir, "summary.json")),
+      ]);
+    } catch {
+      // Incomplete run directory (e.g. a live run that has not finalized
+      // yet, or an interrupted write); not loadable as a saved run.
+      return null;
+    }
     const events: GhostGlassEvent[] = [];
     const rl = createInterface({ input: createReadStream(join(dir, "events.jsonl")), crlfDelay: Infinity });
     for await (const line of rl) {
@@ -216,6 +243,106 @@ export class ViewerServer {
     res.end(body);
   }
 
+  /**
+   * Server-Sent Events endpoint for one live run.
+   *
+   * Wire format:
+   *   event: hello   — {"runId","status","commandLine","startTimeMs"}
+   *   event: events  — {"events":[...]} with an `id:` of the last event
+   *                    (drives Last-Event-ID reconnects)
+   *   event: status  — LiveStatusPayload on every status transition
+   *   event: ping    — keep-alive every SSE_PING_MS
+   *
+   * The client passes ?since=<eventId> (or the browser sends Last-Event-ID
+   * automatically on reconnect); missed events are replayed first, in
+   * chunks, then live batches follow. SSE was chosen over WebSocket because
+   * the traffic is strictly server → browser and EventSource gives us
+   * native reconnect with Last-Event-ID for free.
+   */
+  private handleLiveStream(
+    req: IncomingMessage,
+    res: ServerResponse,
+    session: LiveSessionLike,
+    url: URL,
+  ): void {
+    const since =
+      url.searchParams.get("since") ??
+      (typeof req.headers["last-event-id"] === "string"
+        ? (req.headers["last-event-id"] as string)
+        : null);
+
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    });
+    // Flush headers immediately so the browser's EventSource connects.
+    res.flushHeaders?.();
+
+    let dead = false;
+    const send = (event: string, id: string | null, data: string): void => {
+      if (dead || res.destroyed) return;
+      let chunk = "";
+      if (id) chunk += `id: ${id}\n`;
+      chunk += `event: ${event}\ndata: ${data}\n\n`;
+      const ok = res.write(chunk);
+      // Measure real backpressure from the socket buffer, not a cumulative
+      // counter: a healthy client that keeps up must never trip this.
+      const pending = res.writableLength;
+      if (!ok && pending > SSE_MAX_BUFFERED) {
+        // Chronically slow reader: ask it to resync instead of ballooning
+        // server memory. end() (not destroy()) so the error frame flushes
+        // before the FIN; dead=true already stops further sends.
+        dead = true;
+        try {
+          res.end(`event: error\ndata: ${JSON.stringify({ error: "slow reader; please reconnect with ?since=<lastEventId>" })}\n\n`);
+        } catch {
+          try { res.destroy(); } catch { /* ignore */ }
+        }
+        return;
+      }
+    };
+
+    const hello = session.getStatus();
+    send(
+      "hello",
+      null,
+      JSON.stringify({
+        runId: hello.runId,
+        status: hello.status,
+        commandLine: hello.commandLine,
+        startTimeMs: hello.startTimeMs,
+      }),
+    );
+
+    const sub: LiveSubscriber = {
+      onEvents: (events: GhostGlassEvent[]) => {
+        // Chunk large replays so one message never carries the whole run.
+        for (let i = 0; i < events.length; i += SSE_REPLAY_CHUNK) {
+          const slice = events.slice(i, i + SSE_REPLAY_CHUNK);
+          const last = slice[slice.length - 1] as GhostGlassEvent;
+          send("events", last.id, JSON.stringify({ events: slice }));
+          if (dead) return;
+        }
+      },
+      onStatus: (status) => {
+        send("status", null, JSON.stringify(status));
+      },
+    };
+    const unsubscribe = session.subscribe(sub, since);
+
+    const ping = setInterval(() => {
+      if (!res.destroyed) send("ping", null, "{}");
+    }, SSE_PING_MS);
+    ping.unref?.();
+
+    req.on("close", () => {
+      clearInterval(ping);
+      unsubscribe();
+    });
+  }
+
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (req.method !== "GET") {
       res.writeHead(405, { "content-type": "application/json" });
@@ -242,6 +369,40 @@ export class ViewerServer {
         });
       }
       this.json(res, 200, { runs: items });
+      return;
+    }
+
+    const liveStatusMatch = path.match(/^\/api\/live\/([^/]+)\/status$/);
+    if (liveStatusMatch) {
+      const rawId = decodeURIComponent(liveStatusMatch[1] as string);
+      if (!isValidRunId(rawId)) {
+        this.json(res, 400, { error: "invalid run id" });
+        return;
+      }
+      const session = this.liveSessions.get(rawId);
+      if (!session) {
+        this.json(res, 404, { error: "no live session for run" });
+        return;
+      }
+      this.json(res, 200, session.getStatus());
+      return;
+    }
+
+    const liveStreamMatch = path.match(/^\/api\/live\/([^/]+)\/stream$/);
+    if (liveStreamMatch) {
+      const rawId = decodeURIComponent(liveStreamMatch[1] as string);
+      if (!isValidRunId(rawId)) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("invalid run id");
+        return;
+      }
+      const session = this.liveSessions.get(rawId);
+      if (!session) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("no live session for run");
+        return;
+      }
+      this.handleLiveStream(req, res, session, url);
       return;
     }
 
@@ -306,6 +467,26 @@ export class ViewerServer {
         return;
       }
       if (suffix === "/events") {
+        // A live session serves its in-memory events so a refreshing
+        // browser can reload history mid-run (metadata.json only exists
+        // after finalization).
+        const live = this.liveSessions.get(rawId);
+        if (live) {
+          const total = live.eventsSlice(0, 0).total;
+          const offset = Math.max(0, Number(url.searchParams.get("offset") ?? "0") || 0);
+          const limit = Math.min(
+            MAX_PAGE_LIMIT,
+            Math.max(1, Number(url.searchParams.get("limit") ?? "1000") || 1000),
+          );
+          const page: ApiEventsPage = {
+            total,
+            offset,
+            limit,
+            events: live.eventsSlice(offset, limit).events,
+          };
+          this.json(res, 200, page);
+          return;
+        }
         const run = await this.loadRun(rawId);
         if (!run) {
           this.json(res, 404, { error: "run not found" });
@@ -328,8 +509,14 @@ export class ViewerServer {
       }
     }
 
-    // Viewer page routes: "/" (run picker), "/runs/<id>", and "/diff/<a>/<b>".
-    if (path === "/" || /^\/runs\/[^/]+$/.test(path) || /^\/diff\/[^/]+\/[^/]+$/.test(path)) {
+    // Viewer page routes: "/" (run picker), "/runs/<id>", "/live/<id>",
+    // and "/diff/<a>/<b>".
+    if (
+      path === "/" ||
+      /^\/runs\/[^/]+$/.test(path) ||
+      /^\/live\/[^/]+$/.test(path) ||
+      /^\/diff\/[^/]+\/[^/]+$/.test(path)
+    ) {
       if (path !== "/") {
         const parts = path.slice(1).split("/");
         for (const rawId of parts.slice(1)) {

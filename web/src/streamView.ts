@@ -25,8 +25,19 @@ export class StreamView {
   private actions = new Set<string>();
   private query = "";
   private follow = true;
+  /** True while the list is scrolled to the bottom (live auto-scroll gate). */
+  private atBottom = true;
   private searchTimer = 0;
   private lastCur = -2;
+
+  /** Whether this view is bound to a live (streaming) store. */
+  private get isLive(): boolean {
+    return "followLive" in this.store;
+  }
+
+  private setStoreFollowLive(v: boolean): void {
+    (this.store as unknown as { setFollowLive?: (v: boolean) => void }).setFollowLive?.(v);
+  }
 
   constructor(
     private readonly host: HTMLElement,
@@ -49,11 +60,19 @@ export class StreamView {
 
     const followBtn = document.createElement("button");
     followBtn.className = "tool-btn tool-toggle on";
-    followBtn.textContent = "Follow";
-    followBtn.title = "Auto-scroll to the playhead during replay";
+    followBtn.textContent = this.isLive ? "Follow Live" : "Follow";
+    followBtn.title = this.isLive
+      ? "Auto-scroll to new events as they arrive (turn off to inspect history)"
+      : "Auto-scroll to the playhead during replay";
     followBtn.addEventListener("click", () => {
       this.follow = !this.follow;
       followBtn.classList.toggle("on", this.follow);
+      this.setStoreFollowLive(this.follow);
+      if (this.follow && this.listEl) {
+        // Re-enabling follow snaps back to the live edge.
+        this.atBottom = true;
+        this.listEl.scrollTop = this.listEl.scrollHeight;
+      }
     });
     header.appendChild(followBtn);
     panel.appendChild(header);
@@ -107,7 +126,15 @@ export class StreamView {
     list.setAttribute("tabindex", "0");
     const spacer = el("div", "stream-spacer");
     list.appendChild(spacer);
-    list.addEventListener("scroll", () => this.renderRows());
+    list.addEventListener("scroll", () => {
+      const l = this.listEl;
+      if (l) {
+        // If the user scrolled up manually, never yank them back: live
+        // auto-scroll only fires while they sit at the bottom.
+        this.atBottom = l.scrollTop + l.clientHeight >= l.scrollHeight - ROW_H * 2;
+      }
+      this.renderRows();
+    });
     panel.appendChild(list);
     this.listEl = list;
     this.spacer = spacer;
@@ -134,6 +161,12 @@ export class StreamView {
     if (this.spacer) this.spacer.style.height = `${this.rows.length * ROW_H}px`;
     this.renderRows();
     this.updateCount();
+    // Live mode: follow new batches to the bottom, but only if the user is
+    // already at the bottom (never yank a manual scroll-up). Saved runs keep
+    // their existing behavior: replay auto-scroll is handled by onReplay.
+    if (this.isLive && this.follow && this.atBottom && this.listEl) {
+      this.listEl.scrollTop = this.listEl.scrollHeight;
+    }
   }
 
   private updateCount(): void {

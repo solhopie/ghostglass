@@ -72,6 +72,11 @@ export interface GraphNode {
   firstSeenMs: number;
   lastSeenMs: number;
   stats: Record<string, unknown>;
+  /**
+   * Live mode only: process liveness derived from exit events. Absent for
+   * saved runs and for non-process nodes.
+   */
+  live?: { status: "running" | "exited"; code?: number | null } | undefined;
 }
 
 export interface GraphEdge {

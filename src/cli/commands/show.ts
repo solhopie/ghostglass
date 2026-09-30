@@ -9,8 +9,12 @@ import type { RunSummary } from "../../summary/summarize.js";
 import { formatRunsTable, formatSummaryText } from "../format.js";
 
 /** `ghostglass runs` — list recent traces, newest first. */
-export async function runsCommand(options: { cwd: string }): Promise<void> {
+export async function runsCommand(options: { cwd: string; json?: boolean }): Promise<void> {
   const entries = await listRuns(options.cwd);
+  if (options.json) {
+    console.log(JSON.stringify(entries));
+    return;
+  }
   console.log(formatRunsTable(entries));
 }
 

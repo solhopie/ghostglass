@@ -3,6 +3,50 @@
 All notable changes to GhostGlass are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] - Unreleased
+
+Run 5: live glass — watch what your command is doing while it is doing it.
+
+### Added
+
+- `ghostglass watch -- <command> [--no-browser] [--port N]`: traces the
+  command exactly like `ghostglass run`, but streams normalized events to a
+  live browser view as they happen (server-sent events on a 127.0.0.1-only
+  server). The graph grows, the event stream scrolls, and counters tick up
+  in real time; follow mode auto-scrolls until you scroll up to inspect.
+- Live viewer at `/live/<run-id>`: reconnects (refresh, dropped
+  connection) replay missed events with no duplicates, then resume live;
+  when the command exits the view transitions to the full replay without a
+  reload. Completed live runs are saved in the standard format, so `open`,
+  `diff`, and `export` all work on them.
+- Incremental tracing backend: strace output is tailed and parsed in
+  chunks while the command runs (split lines, split multibyte characters,
+  and malformed lines handled); target stdout/stderr stay inherited and
+  visible. Backpressure pauses the tail at 50,000 queued events and resumes
+  at 10,000 — pausing never loses data.
+- Live session persistence: `events.jsonl` is appended incrementally, so a
+  viewer failure or closed browser never loses the trace; finalization
+  still writes the standard `summary.json` / `metadata.json`.
+- Slow-reader protection on the event stream: a client that falls more
+  than ~2 MB behind is asked to reconnect with `?since=<lastEventId>`
+  instead of ballooning server memory.
+
+### Fixed
+
+- Live subscribers can no longer receive a replayed event twice: the
+  broadcast buffer is flushed to existing subscribers before a new
+  subscriber's replay is drawn from history.
+- SSE slow-reader guard measured cumulative bytes ever sent instead of the
+  real socket buffer, so a healthy long-running client would be disconnected
+  after ~2 MB of total traffic. It now trips only when `write()` reports
+  backpressure and the actual pending socket buffer exceeds 2 MB.
+- The live graph reset the user's pan/zoom on every incremental re-render;
+  the viewport transform is now preserved across live updates.
+- Refreshing `/live/<run-id>` after the run finished showed a dead live view;
+  it now redirects to the saved run's replay page.
+- The slow-reader disconnect now ends the response gracefully so the client
+  reliably receives the resync error frame before the connection closes.
+
 ## [0.4.0] - 2026-09-30
 
 Run 4: portable reports — export any trace as a single self-contained HTML

@@ -23,5 +23,6 @@ export type {
   BackendAvailability,
   TraceResult,
   TraceRunOptions,
+  TraceStream,
   TracerBackend,
 } from "./TracerBackend.js";

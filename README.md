@@ -122,6 +122,54 @@ The API only serves GhostGlass run data, and every trace string is rendered
 as inert text — hostile filenames or command lines in a trace cannot inject
 markup or scripts.
 
+## Live Glass
+
+```sh
+ghostglass watch -- npm run dev
+```
+
+watches what your command is doing *while it is doing it*. GhostGlass traces
+the command with strace exactly as `ghostglass run` does, but streams the
+events to a live view in your browser as they happen — the graph grows, the
+event stream scrolls, and the counters tick up in real time.
+
+- **Live graph + stream** — same process/file/network graph and virtualized
+  event stream as replay, fed incrementally over server-sent events.
+- **Follow mode** — the stream auto-scrolls while you watch; scroll up to
+  pause and inspect, and a "follow live" control jumps back to the head.
+- **Live inspector** — click a running process or a fresh event to inspect
+  it mid-flight.
+- **Reconnects cleanly** — refresh the page or drop the connection and the
+  viewer replays everything you missed with no duplicates, then resumes
+  live. When the command exits, the view transitions to the full replay
+  without a reload.
+- **Completion is a normal trace** — the finished run is saved in the same
+  format as `ghostglass run`, so `open`, `diff`, and `export` all work on
+  it. If the viewer fails or you close the browser, tracing continues and
+  the trace is still saved.
+
+```sh
+ghostglass watch --no-browser -- npm run dev   # trace without opening a browser
+ghostglass watch --port 8080 -- npm run dev    # live viewer on another local port
+```
+
+The live server binds to `127.0.0.1` only, like `ghostglass open`. Exit
+codes are preserved (including Ctrl+C as 130 with a partial trace saved),
+and interrupting the command never leaves tracer processes behind.
+
+```text
+ghostglass watch -- <command>
+          ↓
+      Live Glass
+          ↓
+      Saved Run
+       ↙  ↓  ↘
+   Replay Diff Export
+```
+
+A finished live run is a normal GhostGlass run: replay it, diff it
+against another run, or export a portable report — no extra steps.
+
 ## Compare Runs
 
 ```sh
@@ -377,8 +425,10 @@ Honest constraints, documented instead of faked:
   still in progress, because the attempt itself is the signal.
 - **`<unfinished>` / `<... resumed>` syscall fragments are skipped** rather
   than reconstructed — we never invent the missing half of a syscall.
-- **No live streaming yet.** The raw trace is parsed after the command
-  completes; very long or very busy runs produce large `trace.log` files.
+- **Live view needs the watch process.** Closing the terminal that runs
+  `ghostglass watch` ends the live session; the saved trace remains for
+  replay. A viewer that falls more than ~2 MB behind the event stream is
+  disconnected and asked to reconnect rather than buffering forever.
 - **Timestamps** assume the trace does not cross a local-midnight boundary.
 - **Viewer graph shows the top 600 files by activity**; the full event list
   is always available in the stream. Event pages are capped at 5,000 per
@@ -396,13 +446,12 @@ Completed:
 - [x] Timeline replay
 - [x] Event inspector
 - [x] Local viewer
+- [x] Run comparison (`ghostglass diff`)
+- [x] HTML trace export (portable single-file reports)
+- [x] Live tracing (`ghostglass watch`)
 
 Upcoming:
 
-- [ ] Run comparison
-- [ ] `ghostglass diff`
-- [ ] HTML trace export
-- [ ] live tracing
 - [ ] eBPF backend
 - [ ] macOS support
 

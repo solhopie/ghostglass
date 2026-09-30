@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
-import { createInterface } from "node:readline";
 import { resolve as resolvePath } from "node:path";
+import { StraceStreamParser } from "./streamParser.js";
 import type {
   GhostGlassEvent,
   GhostGlassEventAction,
@@ -42,7 +42,7 @@ export interface ParsedTrace {
   rootSignal?: string | null | undefined;
 }
 
-interface ParseContext {
+export interface ParseContext {
   runId: string;
   /** Local-midnight epoch ms of the run's start day (for -tt timestamps). */
   dayStartMs: number;
@@ -475,41 +475,29 @@ export function createParseContext(runId: string, startTimeMs: number): ParseCon
 /**
  * Parse a full strace log file into normalized, chronological events.
  * strace -f serializes output chronologically, so file order is event order.
+ *
+ * Implemented on top of the incremental stream parser, so batch and live
+ * parsing share identical logic and statistics.
  */
 export async function parseTraceFile(
   rawTracePath: string,
   runId: string,
   startTimeMs: number,
 ): Promise<ParsedTrace> {
-  const ctx = createParseContext(runId, startTimeMs);
+  const parser = new StraceStreamParser(runId, startTimeMs);
   const events: GhostGlassEvent[] = [];
-  const stats: TraceParseStats = { totalLines: 0, events: 0, skipped: 0, malformed: 0 };
 
-  const rl = createInterface({
-    input: createReadStream(rawTracePath, { encoding: "utf8" }),
-    crlfDelay: Infinity,
-  });
-
-  for await (const line of rl) {
-    if (!line.trim()) continue;
-    stats.totalLines++;
-    const event = parseLine(line, ctx);
-    if (event) {
-      events.push(event);
-      stats.events++;
-    } else if (BASIC_LINE_RE.test(line.trimEnd())) {
-      // A well-formed trace line we deliberately did not normalize.
-      stats.skipped++;
-    } else {
-      stats.malformed++;
-    }
+  const stream = createReadStream(rawTracePath, { encoding: "utf8" });
+  for await (const chunk of stream) {
+    events.push(...parser.push(chunk as string));
   }
+  events.push(...parser.flush());
 
   return {
     events,
-    stats,
-    rootPid: ctx.rootPid,
-    rootExitCode: ctx.rootExitCode,
-    rootSignal: ctx.rootSignal,
+    stats: parser.getStats(),
+    rootPid: parser.rootPid,
+    rootExitCode: parser.rootExitCode,
+    rootSignal: parser.rootSignal,
   };
 }

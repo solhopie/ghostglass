@@ -57,6 +57,12 @@ export class GraphView {
 
   render(): void {
     const graph = this.store.graph;
+    // Preserve the user's pan/zoom across live re-renders; only apply the
+    // default view on the very first render.
+    const firstRender = this.svg === null;
+    const keepK = this.k;
+    const keepTx = this.tx;
+    const keepTy = this.ty;
     this.host.innerHTML = "";
     this.nodeEls.clear();
     this.edgeEls = [];
@@ -92,7 +98,14 @@ export class GraphView {
     this.drawEdges(graph.edges);
     this.drawNodes();
     this.bindPanZoom(svg);
-    this.resetView(false);
+    if (firstRender) {
+      this.resetView(false);
+    } else {
+      this.k = keepK;
+      this.tx = keepTx;
+      this.ty = keepTy;
+      this.applyTransform();
+    }
     this.updateReplay();
     this.updateSelection();
 
@@ -491,8 +504,7 @@ export class GraphView {
   }
 
   /** Cumulative activation: nodes/edges light up once their first event passes. */
-  updateReplay(): void {
-    const t = this.store.tMs;
+  updateReplay(): void {    const t = this.store.tMs;
     // Frontier optimization: only touch the DOM when the active set changed.
     let count = 0;
     for (const n of this.sortedNodes) {
@@ -513,14 +525,26 @@ export class GraphView {
     if (idx !== this.lastPulseIndex) {
       this.lastPulseIndex = idx;
       const ev = this.store.currentEvent();
-      if (ev && (this.store.playing || idx >= 0)) {
-        for (const id of this.store.nodeIdsForEvent(ev)) {
-          const g = this.nodeEls.get(id);
-          if (!g || g.classList.contains("pulse")) continue;
-          g.classList.add("pulse");
-          window.setTimeout(() => g.classList.remove("pulse"), 650);
-        }
+      // In high-activity live mode pulses are suppressed: the UI batches
+      // instead of animating every event.
+      if (ev && (this.store.playing || idx >= 0) && !this.store.highActivity) {
+        this.pulseNodes(this.store.nodeIdsForEvent(ev));
       }
+    }
+  }
+
+  /**
+   * Briefly highlight already-rendered nodes (e.g. as live events arrive).
+   * Toggles a CSS class on the existing <g> elements — no re-layout, no
+   * rebuild. Ids with no rendered element are skipped.
+   */
+  pulseNodes(ids: readonly string[]): void {
+    for (const id of ids) {
+      const g = this.nodeEls.get(id);
+      if (!g || g.classList.contains("pulse")) continue;
+      g.classList.add("pulse");
+      const cur = g;
+      window.setTimeout(() => cur.classList.remove("pulse"), 650);
     }
   }
 }

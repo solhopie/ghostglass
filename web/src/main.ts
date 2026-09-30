@@ -16,6 +16,8 @@ import { DiffTimelineView } from "./diffTimelineView.js";
 import { GraphView } from "./graphView.js";
 import { HeaderView } from "./headerView.js";
 import { InspectorView } from "./inspectorView.js";
+import { LiveHeaderView } from "./liveHeaderView.js";
+import { LiveStore } from "./liveStore.js";
 import { StreamView } from "./streamView.js";
 import { TimelineView } from "./timelineView.js";
 
@@ -130,6 +132,63 @@ async function bootRun(runId: string): Promise<void> {
   }
 }
 
+/**
+ * Live Glass: stream a running command's trace into the viewer as it
+ * happens. Same layout as the saved-run replay; when the backend reports a
+ * terminal status the page becomes a normal replay with no reload.
+ */
+async function bootLive(runId: string): Promise<void> {
+  document.title = `GhostGlass Live — ${runId}`;
+  const app = document.getElementById("app") as HTMLElement;
+  app.innerHTML = "";
+
+  const header = el("header", "gg-header");
+  const main = el("main", "gg-main");
+  const graphSection = el("section", "gg-graph");
+  const side = el("aside", "gg-side");
+  const streamHost = el("div", "gg-stream");
+  const inspectorHost = el("div", "gg-inspector");
+  side.appendChild(streamHost);
+  side.appendChild(inspectorHost);
+  main.appendChild(graphSection);
+  main.appendChild(side);
+  const footer = el("footer", "gg-timeline");
+  app.appendChild(header);
+  app.appendChild(main);
+  app.appendChild(footer);
+
+  const store = new LiveStore(runId);
+  const headerView = new LiveHeaderView(header, store);
+  const graphView = new GraphView(graphSection, store);
+  const streamView = new StreamView(streamHost, store);
+  const inspectorView = new InspectorView(inspectorHost, store);
+  const timelineView = new TimelineView(footer, store);
+  void graphView;
+  void streamView;
+  void inspectorView;
+  void timelineView;
+
+  headerView.render();
+  streamView.render();
+  timelineView.render();
+
+  try {
+    await store.connect();
+  } catch (err) {
+    // The live session is gone (run finished and was unregistered, or the
+    // watch process exited). If the completed run was saved, send the user
+    // to its normal replay page instead of showing a dead live view.
+    try {
+      await getRunDetail(runId);
+      window.location.replace(`/runs/${encodeURIComponent(runId)}`);
+      return;
+    } catch {
+      // Not a saved run either — show the original error.
+    }
+    fail(`Could not start live session ${runId}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 async function bootDiff(runA: string, runB: string): Promise<void> {
   const app = document.getElementById("app") as HTMLElement;
   app.innerHTML = "";
@@ -180,6 +239,7 @@ async function bootDiff(runA: string, runB: string): Promise<void> {
 
 const diffMatch = window.location.pathname.match(/^\/diff\/([^/]+)\/([^/]+)$/);
 const match = window.location.pathname.match(/^\/runs\/([^/]+)$/);
+const liveMatch = window.location.pathname.match(/^\/live\/([^/]+)$/);
 // Static exports boot directly from the embedded route shim instead of the
 // URL path (history manipulation is unreliable on file:// URLs).
 const staticRoute = (
@@ -193,6 +253,8 @@ if (staticRoute?.kind === "diff" && staticRoute.runA && staticRoute.runB) {
   void bootRun(staticRoute.runId);
 } else if (diffMatch?.[1] && diffMatch?.[2]) {
   void bootDiff(decodeURIComponent(diffMatch[1]), decodeURIComponent(diffMatch[2]));
+} else if (liveMatch?.[1]) {
+  void bootLive(decodeURIComponent(liveMatch[1]));
 } else if (match?.[1]) {
   void bootRun(decodeURIComponent(match[1]));
 } else {

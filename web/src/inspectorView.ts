@@ -106,6 +106,15 @@ export class InspectorView {
       if (node.parentPid != null) {
         body.appendChild(this.kv("Parent PID", `${node.parentPid} (${this.store.pidLabel(node.parentPid)})`));
       }
+      if (node.live) {
+        const st =
+          node.live.status === "running"
+            ? "RUNNING"
+            : node.live.code != null
+              ? `EXITED (code ${node.live.code})`
+              : "EXITED";
+        body.appendChild(this.kv("Status", st));
+      }
       body.appendChild(this.kv("Started", `+${formatOffset(node.firstSeenMs)}`));
       const s = node.stats;
       body.appendChild(this.kv("Files read", formatCount(this.num(s, "filesRead"))));

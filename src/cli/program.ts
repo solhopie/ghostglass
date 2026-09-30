@@ -4,6 +4,7 @@ import { runsCommand, showCommand } from "./commands/show.js";
 import { openCommand } from "./commands/open.js";
 import { diffCommand } from "./commands/diff.js";
 import { exportCommand, exportDiffCommand } from "./commands/export.js";
+import { watchCommand } from "./commands/watch.js";
 import { readPackageVersion } from "./version.js";
 
 export function buildProgram(): Command {
@@ -28,8 +29,9 @@ export function buildProgram(): Command {
   program
     .command("runs")
     .description("List recent traces")
-    .action(async () => {
-      await runsCommand({ cwd: process.cwd() });
+    .option("--json", "Print the run list as JSON")
+    .action(async (options: { json?: boolean }) => {
+      await runsCommand({ cwd: process.cwd(), json: options.json === true });
     });
 
   program
@@ -48,10 +50,10 @@ export function buildProgram(): Command {
     .option("--port <number>", "Local port to listen on (default 7777)", (v: string) =>
       parseInt(v, 10),
     )
-    .action(async (runId: string, options: { noBrowser?: boolean; port?: number }) => {
+    .action(async (runId: string, options: { browser?: boolean; port?: number }) => {
       await openCommand(runId, {
         cwd: process.cwd(),
-        noBrowser: options.noBrowser,
+        noBrowser: options.browser === false,
         port: options.port,
       });
     });
@@ -65,10 +67,26 @@ export function buildProgram(): Command {
     .option("--port <number>", "Local port to listen on (default 7777)", (v: string) =>
       parseInt(v, 10),
     )
-    .action(async (runA: string, runB: string, options: { noBrowser?: boolean; port?: number }) => {
+    .action(async (runA: string, runB: string, options: { browser?: boolean; port?: number }) => {
       await diffCommand(runA, runB, {
         cwd: process.cwd(),
-        noBrowser: options.noBrowser,
+        noBrowser: options.browser === false,
+        port: options.port,
+      });
+    });
+
+  program
+    .command("watch")
+    .description("Trace a command with live visualization in the local viewer")
+    .argument("<command...>", "command to trace, e.g. npm install express")
+    .option("--no-browser", "Stream without opening a browser (prints live summary)")
+    .option("--port <number>", "Local port to listen on (default 7777)", (v: string) =>
+      parseInt(v, 10),
+    )
+    .action(async (command: string[], options: { browser?: boolean; port?: number }) => {
+      await watchCommand(command, {
+        cwd: process.cwd(),
+        noBrowser: options.browser === false,
         port: options.port,
       });
     });
