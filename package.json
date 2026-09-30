@@ -1,0 +1,53 @@
+{
+  "bin": {
+    "ghostglass": "dist/src/cli.js"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0"
+  },
+  "description": "A local system activity recorder and visual execution replay tool for Linux commands.",
+  "devDependencies": {
+    "@eslint/js": "^9.14.0",
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^22.9.0",
+    "eslint": "^9.14.0",
+    "jsdom": "^30.1.1",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.13.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "web/dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "tracing",
+    "strace",
+    "syscall",
+    "observability",
+    "debugging",
+    "linux",
+    "cli",
+    "process",
+    "visualization",
+    "developer-tools"
+  ],
+  "license": "MIT",
+  "name": "ghostglass",
+  "scripts": {
+    "build": "tsc && npm run build:web && node -e \"require('node:fs').cpSync('test/fixtures', 'dist/test/fixtures', { recursive: true })\"",
+    "build:web": "tsc -p web && node -e \"require('node:fs').cpSync('web/public', 'web/dist', { recursive: true })\"",
+    "clean": "rm -rf dist web/dist",
+    "dev": "tsc --watch",
+    "lint": "eslint src test web/src",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "typecheck": "tsc --noEmit && tsc -p web --noEmit"
+  },
+  "type": "module",
+  "version": "0.2.0"
+}

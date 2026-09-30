@@ -1,0 +1,352 @@
+# GhostGlass
+
+**See what your commands are doing when you're not looking.**
+
+GhostGlass is a local system activity recorder and visual execution replay
+tool for Linux commands.
+
+```sh
+ghostglass run -- npm install express
+ghostglass open latest
+```
+
+```
+Command
+   ↓
+Processes
+   ↓
+Files + Network
+   ↓
+Interactive Replay
+```
+
+GhostGlass runs your command under observation and shows you exactly what it
+did: which processes it spawned, which files it read, wrote, created, and
+deleted, and which network connections it attempted — all saved as a
+replayable trace you own, on your machine.
+
+![GhostGlass viewer replaying a trace](docs/assets/ghostglass-viewer.png)
+
+> **Early release.** GhostGlass is Linux-first right now (it traces with
+> `strace`). The tracing engine, normalized event format, local run storage,
+> and the visual replay viewer are solid.
+
+---
+
+## What GhostGlass Does
+
+- **Records** what a command actually does at the system-call level:
+  processes started and their parent/child relationships, file reads,
+  writes, creates, deletes, renames, and outbound network connection
+  attempts (destination IP + port).
+- **Stores** each run locally as structured data: `metadata.json`,
+  `events.jsonl` (normalized events in chronological order),
+  `summary.json`, and the raw `trace.log` for debugging.
+- **Replays** runs in a local web viewer: an interactive process/file/
+  network graph, a scrubbable timeline, and a searchable event stream —
+  with no accounts, no cloud, and no telemetry.
+
+It is built for developers who want ground truth about a command:
+auditing an install script before trusting it, understanding what a build
+touches, or debugging a process that misbehaves when nobody is watching.
+
+## Quick Start
+
+Requirements: **Linux**, **Node.js 18+**, and **`strace`**.
+
+```sh
+git clone https://github.com/<your-username>/ghostglass.git
+cd ghostglass
+npm install
+npm run build
+npm link        # makes `ghostglass` available on your PATH
+```
+
+(`<your-username>` is a placeholder — replace it with the actual GitHub
+user or organization when the repository is published.)
+
+Or run it without installing:
+
+```sh
+node dist/src/cli.js run -- npm install express
+```
+
+Missing `strace`? GhostGlass tells you how to install it:
+
+```sh
+# Debian/Ubuntu
+sudo apt install strace
+# Fedora/RHEL
+sudo dnf install strace
+# Arch
+sudo pacman -S strace
+# Alpine
+sudo apk add strace
+```
+
+No accounts, no tokens, no cloud services, no AI. `strace` needs no root
+to trace your own processes.
+
+## Visual Replay
+
+```sh
+ghostglass open latest
+```
+
+opens the trace in a local, dependency-free web viewer. The server binds to
+`127.0.0.1` only — your traces never leave the machine.
+
+- **Process/file/network graph** — one node per process, file, and remote
+  endpoint; edges for spawns, file access, and connections. Pan, zoom, drag
+  nodes, fit/reset the view, and toggle file/network layers.
+- **Replay with seeking** — play/pause at 1x/2x/4x, jump to start/end, and
+  scrub the timeline forward *and* backward; the graph lights up nodes as
+  their events are reached.
+- **Virtualized event stream** — thousands of events stay smooth; filter by
+  process/file/network, by action (read/write/create/delete), and by
+  free-text search over paths, PIDs, IPs, and commands.
+- **Inspectors** — click any graph node or event row for details: PIDs and
+  parent PIDs, executables, file access counts, endpoints, timestamps.
+
+![GhostGlass inspector showing process details](docs/assets/ghostglass-inspector.png)
+
+- **Run picker** — `ghostglass open` with no run ID lists every saved trace;
+  interrupted (partial) traces are badged.
+
+```sh
+ghostglass open <run-id> --no-browser   # print the URL, don't launch a browser
+ghostglass open latest --port 8080      # listen on a different local port
+```
+
+The API only serves GhostGlass run data, and every trace string is rendered
+as inert text — hostile filenames or command lines in a trace cannot inject
+markup or scripts.
+
+## Example
+
+Trace a real install and replay it:
+
+```sh
+ghostglass run -- npm install express
+ghostglass open latest
+```
+
+When the command finishes you get a summary like this — every number comes
+from the actual trace, nothing is estimated or invented:
+
+```
+GhostGlass
+────────────────────────────────
+Command:    npm install express
+Run ID:     gg_20260930_001
+Duration:   12.44s
+Exit Code:  0
+Processes:  12
+Filesystem: 4,901 events
+  • 3,107 reads
+  • 1,219 writes
+  • 438 creates
+  • 2 deletes
+  • 82 renames
+  • 53 mkdirs
+Network:    17 connection attempts
+  • 198.19.0.1:0
+  • fd8b:4f84:7d32:99::1:3128
+Trace saved: .ghostglass/runs/gg_20260930_001/
+```
+
+In the viewer you will see the **process tree** npm spawned, every **file**
+it touched (reads, writes, creates, deletes), each **network connection
+attempt** with destination IP and port, the full **timeline** of when it all
+happened, and the **individual event details** behind every row and node.
+
+The repository ships a small deterministic demo fixture
+(`test/fixtures/demo.cjs`) that exercises processes, files, and network in
+under a second — useful for trying the viewer without installing anything:
+
+```sh
+ghostglass run -- node test/fixtures/demo.cjs
+ghostglass open latest
+```
+
+## Commands
+
+```sh
+ghostglass --help              # usage
+ghostglass --version           # version
+ghostglass run -- <command>    # trace a command
+ghostglass runs                # list recent traces
+ghostglass show <run-id>       # show a saved trace summary
+ghostglass open <run-id>       # replay a trace in the visual viewer
+ghostglass open latest         # replay the most recent trace
+```
+
+Each run is stored locally under `.ghostglass/runs/<run-id>/`:
+
+- `metadata.json` — version, command, timing, OS, exit code, backend
+- `events.jsonl` — normalized events in chronological order
+- `summary.json` — aggregate statistics
+- `trace.log` — the raw tracer output (for debugging)
+
+More examples:
+
+```sh
+ghostglass run -- make -j4            # trace a build, see what it touches
+ghostglass run -- ./install.sh       # audit a script before trusting it
+ghostglass show gg_20260930_003      # re-display a saved summary
+```
+
+Exit codes are preserved: GhostGlass exits with the traced command's code
+(or 128+signal when interrupted). Interrupt with Ctrl+C and the signal is
+forwarded to the traced command, temporary tracing processes are cleaned
+up, and the partial trace is still saved and marked `interrupted`.
+
+## How It Works
+
+```
+command
+   ↓
+strace -f
+   ↓
+GhostGlass parser
+   ↓
+normalized events
+   ↓
+events.jsonl
+   ↓
+graph/index
+   ↓
+local replay viewer
+```
+
+The key design decision: **tracing backends produce one common event
+format.** `TracerBackend` is a small interface (`checkAvailable()` +
+`run()`); the parser, storage, summary, and CLI layers never see
+backend-specific output. Adding an eBPF backend later means writing a new
+`TracerBackend` implementation plus a parser that emits the same
+`GhostGlassEvent` type — no application rewrite.
+
+The normalized event looks like this:
+
+```json
+{
+  "id": "gg_20260930_001-000042",
+  "runId": "gg_20260930_001",
+  "timestamp": 1759272000000,
+  "type": "file",
+  "action": "create",
+  "pid": 18281,
+  "path": "/home/user/project/package.json",
+  "metadata": { "syscall": "openat", "flags": "O_WRONLY|O_CREAT|O_TRUNC" }
+}
+```
+
+Raw syscall detail (the original syscall name, flags, argv, return values)
+is preserved in `metadata` for debugging, but the primary `type`/`action`
+fields speak in developer terms: `read`, `write`, `create`, `delete`,
+`rename`, `mkdir`, `exec`, `spawn`, `exit`, `connect`.
+
+## Privacy
+
+GhostGlass is local-first by design:
+
+- **Local-first.** Traces never leave your machine. There is no upload, no
+  account, no telemetry — not even anonymous usage stats.
+- **No AI.** Nothing is sent to any model or external service, ever.
+- **No environment-variable dumps.** Your full environment is never written
+  into a trace. `execve` lines record only the argument vector, never
+  environment variable values.
+- **The viewer binds to `127.0.0.1` by default** and serves only
+  GhostGlass run data.
+- GhostGlass observes; it does not inject code, modify the traced
+  program's files, or intercept credentials.
+
+## Current Limitations
+
+Honest constraints, documented instead of faked:
+
+- **Linux only.** macOS/Windows support is roadmap, not yet implemented.
+- **strace backend.** Tracing is done with `strace -f`; an eBPF backend is
+  planned but does not exist yet.
+- **Tracing overhead.** `strace` slows the traced command (typically 2–10x
+  for syscall-heavy workloads). Timings in the summary are wall-clock and
+  include tracing overhead.
+- **Hostnames are not resolved.** Network events carry destination IP and
+  port. The strace backend does not guess hostnames, so `host` is typically
+  absent.
+- **AF_UNIX sockets are skipped.** Local IPC (e.g. D-Bus) is not recorded
+  as network activity.
+- **Only successful syscalls become file/process events.** Failed opens
+  (e.g. `ENOENT` path probing) are not presented as file activity.
+  `connect` is the exception: attempts are recorded even when refused or
+  still in progress, because the attempt itself is the signal.
+- **`<unfinished>` / `<... resumed>` syscall fragments are skipped** rather
+  than reconstructed — we never invent the missing half of a syscall.
+- **No live streaming yet.** The raw trace is parsed after the command
+  completes; very long or very busy runs produce large `trace.log` files.
+- **Timestamps** assume the trace does not cross a local-midnight boundary.
+- **Viewer graph shows the top 600 files by activity**; the full event list
+  is always available in the stream. Event pages are capped at 5,000 per
+  API request (the frontend paginates).
+
+## Roadmap
+
+Completed:
+
+- [x] System-call tracing
+- [x] Normalized GhostGlass event format
+- [x] Run storage
+- [x] Process/file/network tracking
+- [x] Interactive execution graph
+- [x] Timeline replay
+- [x] Event inspector
+- [x] Local viewer
+
+Upcoming:
+
+- [ ] Run comparison
+- [ ] `ghostglass diff`
+- [ ] HTML trace export
+- [ ] live tracing
+- [ ] eBPF backend
+- [ ] macOS support
+
+## Architecture
+
+```
+src/
+  cli/          # commands (run, runs, show, open) and terminal formatting
+  tracer/       # TracerBackend interface + LinuxStraceTracer (strace)
+  parser/       # strace output -> normalized GhostGlass events
+  events/       # the common event model (types.ts)
+  storage/      # run directories, metadata.json, events.jsonl
+  summary/      # aggregate statistics builder
+  viewer/       # replay API: protocol, indexer, replay engine, server
+web/
+  public/       # static shell (index.html, styles.css)
+  src/          # dependency-free TypeScript frontend
+test/
+  fixtures/     # fixture programs traced by integration and viewer tests
+```
+
+## Development
+
+```sh
+npm install      # install dependencies
+npm run dev      # typecheck in watch mode
+npm run build    # compile to dist/
+npm test         # build + run all tests (unit + end-to-end)
+npm run lint     # eslint
+npm run typecheck# tsc --noEmit
+```
+
+Linux + `strace` are required for the tracing integration tests
+(`test/integration.test.ts`). Parser, storage, summary, and viewer tests
+run without strace. Tests use the Node.js built-in test runner and strict
+TypeScript (`strict`, `noUncheckedIndexedAccess`,
+`exactOptionalPropertyTypes`, …). See [CONTRIBUTING.md](CONTRIBUTING.md)
+for the full contributor guide.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
