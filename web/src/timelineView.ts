@@ -63,7 +63,13 @@ export class TimelineView {
 
     canvas.addEventListener("pointerdown", (e) => {
       this.scrubbing = true;
-      canvas.setPointerCapture(e.pointerId);
+      // Synthetic or already-released pointers make setPointerCapture throw;
+      // capture is an enhancement, never let it break scrubbing.
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
       this.store.pause();
       this.scrubTo(e);
     });

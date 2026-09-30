@@ -2,6 +2,8 @@ import { Command } from "commander";
 import { runCommand } from "./commands/run.js";
 import { runsCommand, showCommand } from "./commands/show.js";
 import { openCommand } from "./commands/open.js";
+import { diffCommand } from "./commands/diff.js";
+import { exportCommand, exportDiffCommand } from "./commands/export.js";
 import { readPackageVersion } from "./version.js";
 
 export function buildProgram(): Command {
@@ -53,6 +55,98 @@ export function buildProgram(): Command {
         port: options.port,
       });
     });
+
+  program
+    .command("diff")
+    .description("Compare two saved traces in the local visual diff viewer")
+    .argument("<run-a>", 'run ID, e.g. gg_20260930_001, or "latest"')
+    .argument("<run-b>", 'run ID, e.g. gg_20260930_002, or "previous"')
+    .option("--no-browser", "Print the viewer URL without opening a browser")
+    .option("--port <number>", "Local port to listen on (default 7777)", (v: string) =>
+      parseInt(v, 10),
+    )
+    .action(async (runA: string, runB: string, options: { noBrowser?: boolean; port?: number }) => {
+      await diffCommand(runA, runB, {
+        cwd: process.cwd(),
+        noBrowser: options.noBrowser,
+        port: options.port,
+      });
+    });
+
+  function addExportOptions(cmd: Command): void {
+    cmd
+      .option("-o, --output <path>", "Output file path")
+      .option("--force", "Overwrite the output file if it exists")
+      .option("--format <format>", "Output format: html or json (default html)", "html")
+      .option("--redact-home", "Replace the home directory prefix with <HOME>")
+      .option("--redact-cwd", "Replace the working directory prefix with <CWD>")
+      .option("--redact-network", "Replace destination IPs with <NETWORK>, keeping ports")
+      .option("--redact-args", "Keep the executable, redact command arguments");
+  }
+
+  const exportCmd = program
+    .command("export")
+    .description("Generate a self-contained portable HTML report from a saved trace")
+    .argument("<run-id>", 'run ID, e.g. gg_20260930_001, or "latest"');
+  addExportOptions(exportCmd);
+  exportCmd.action(
+    async (
+      runId: string,
+      options: {
+        output?: string;
+        force?: boolean;
+        format?: string;
+        redactHome?: boolean;
+        redactCwd?: boolean;
+        redactNetwork?: boolean;
+        redactArgs?: boolean;
+      },
+    ) => {
+      await exportCommand(runId, {
+        cwd: process.cwd(),
+        output: options.output,
+        force: options.force,
+        format: options.format,
+        redactHome: options.redactHome,
+        redactCwd: options.redactCwd,
+        redactNetwork: options.redactNetwork,
+        redactArgs: options.redactArgs,
+      });
+    },
+  );
+
+  const exportDiffCmd = program
+    .command("export-diff")
+    .description("Generate a self-contained portable HTML report comparing two saved traces")
+    .argument("<run-a>", 'run ID, e.g. gg_20260930_001, or "latest"')
+    .argument("<run-b>", 'run ID, e.g. gg_20260930_002, or "previous"');
+  addExportOptions(exportDiffCmd);
+  exportDiffCmd.action(
+    async (
+      runA: string,
+      runB: string,
+      options: {
+        output?: string;
+        force?: boolean;
+        format?: string;
+        redactHome?: boolean;
+        redactCwd?: boolean;
+        redactNetwork?: boolean;
+        redactArgs?: boolean;
+      },
+    ) => {
+      await exportDiffCommand(runA, runB, {
+        cwd: process.cwd(),
+        output: options.output,
+        force: options.force,
+        format: options.format,
+        redactHome: options.redactHome,
+        redactCwd: options.redactCwd,
+        redactNetwork: options.redactNetwork,
+        redactArgs: options.redactArgs,
+      });
+    },
+  );
 
   return program;
 }

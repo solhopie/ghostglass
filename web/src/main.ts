@@ -4,9 +4,15 @@
  * /runs/<id> boots the replay for one run. / shows a run picker.
  * Everything is local: same-origin API, no external requests, no telemetry.
  */
-import { getEventsPage, getGraph, getRunDetail, getRuns, getTimeline } from "./api.js";
+import { getDiff, getEventsPage, getGraph, getRunDetail, getRuns, getTimeline } from "./api.js";
 import { el, text } from "./format.js";
 import { Store } from "./store.js";
+import { DiffStore } from "./diffStore.js";
+import { DiffGraphView } from "./diffGraphView.js";
+import { DiffHeaderView } from "./diffHeaderView.js";
+import { DiffInspectorView } from "./diffInspectorView.js";
+import { DiffStreamView } from "./diffStreamView.js";
+import { DiffTimelineView } from "./diffTimelineView.js";
 import { GraphView } from "./graphView.js";
 import { HeaderView } from "./headerView.js";
 import { InspectorView } from "./inspectorView.js";
@@ -124,8 +130,70 @@ async function bootRun(runId: string): Promise<void> {
   }
 }
 
+async function bootDiff(runA: string, runB: string): Promise<void> {
+  const app = document.getElementById("app") as HTMLElement;
+  app.innerHTML = "";
+
+  const header = el("header", "diff-page-head");
+  const graphSection = el("section", "diff-page-graph");
+  const timelineSection = el("section", "diff-page-timeline");
+  const bottom = el("div", "diff-page-bottom");
+  const streamHost = el("div", "diff-page-stream");
+  const inspectorHost = el("aside", "diff-page-inspector");
+  bottom.appendChild(streamHost);
+  bottom.appendChild(inspectorHost);
+  app.appendChild(header);
+  app.appendChild(graphSection);
+  app.appendChild(timelineSection);
+  app.appendChild(bottom);
+
+  const store = new DiffStore(runA, runB);
+  const headerView = new DiffHeaderView(header, store);
+  const graphView = new DiffGraphView(graphSection, store);
+  const timelineView = new DiffTimelineView(timelineSection, store);
+  const streamView = new DiffStreamView(streamHost, store);
+  const inspectorView = new DiffInspectorView(inspectorHost, store);
+  void inspectorView;
+
+  headerView.render();
+  graphView.render();
+  timelineView.render();
+  streamView.render();
+
+  try {
+    const [diff, tlA, tlB] = await Promise.all([
+      getDiff(runA, runB),
+      getTimeline(runA),
+      getTimeline(runB),
+    ]);
+    store.setDiff(diff);
+    store.setTimelines(tlA, tlB);
+    headerView.render();
+    graphView.render();
+    timelineView.render();
+    streamView.render();
+    inspectorView.render();
+  } catch (err) {
+    fail(`Could not load diff ${runA} / ${runB}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+const diffMatch = window.location.pathname.match(/^\/diff\/([^/]+)\/([^/]+)$/);
 const match = window.location.pathname.match(/^\/runs\/([^/]+)$/);
-if (match?.[1]) {
+// Static exports boot directly from the embedded route shim instead of the
+// URL path (history manipulation is unreliable on file:// URLs).
+const staticRoute = (
+  window as unknown as {
+    __GG_STATIC_ROUTE__?: { kind: string; runId?: string; runA?: string; runB?: string };
+  }
+).__GG_STATIC_ROUTE__;
+if (staticRoute?.kind === "diff" && staticRoute.runA && staticRoute.runB) {
+  void bootDiff(staticRoute.runA, staticRoute.runB);
+} else if (staticRoute?.kind === "run" && staticRoute.runId) {
+  void bootRun(staticRoute.runId);
+} else if (diffMatch?.[1] && diffMatch?.[2]) {
+  void bootDiff(decodeURIComponent(diffMatch[1]), decodeURIComponent(diffMatch[2]));
+} else if (match?.[1]) {
   void bootRun(decodeURIComponent(match[1]));
 } else {
   void bootPicker();

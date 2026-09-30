@@ -108,3 +108,172 @@ export interface ApiTimeline {
   endTimeMs: number;
   timestamps: number[];
 }
+
+/**
+ * Diff API shapes. Mirror of src/diff/types.ts served by
+ * GET /api/diff/<a>/<b>; self-contained so web/dist stays standalone.
+ */
+
+export type DiffStatus = "shared" | "changed" | "only-a" | "only-b";
+export type DiffSide = "a" | "b";
+
+export interface ProcessSideStats {
+  pids: number[];
+  executable: string | null;
+  argv: string[] | null;
+  parentExecutable: string | null;
+  children: number;
+  filesRead: number;
+  filesWritten: number;
+  filesCreated: number;
+  filesDeleted: number;
+  filesRenamed: number;
+  dirsCreated: number;
+  networkConnects: number;
+  eventCount: number;
+  firstSeenMs: number;
+  lastSeenMs: number;
+}
+
+export interface ProcessDiffEntity {
+  kind: "process";
+  fingerprint: string;
+  status: DiffStatus;
+  ambiguous: boolean;
+  label: string;
+  executable: string | null;
+  a: ProcessSideStats | null;
+  b: ProcessSideStats | null;
+}
+
+export interface FileSideStats {
+  read: number;
+  write: number;
+  create: number;
+  delete: number;
+  rename: number;
+  mkdir: number;
+  eventCount: number;
+  firstSeenMs: number;
+  lastSeenMs: number;
+  touchedBy: { pid: number; executable: string | null; count: number }[];
+}
+
+export interface FileDiffEntity {
+  kind: "file";
+  fingerprint: string;
+  status: DiffStatus;
+  path: string;
+  label: string;
+  a: FileSideStats | null;
+  b: FileSideStats | null;
+}
+
+export interface NetworkSideStats {
+  attempts: number;
+  firstSeenMs: number;
+  lastSeenMs: number;
+  processes: { pid: number; executable: string | null; count: number }[];
+}
+
+export interface NetworkDiffEntity {
+  kind: "network";
+  fingerprint: string;
+  status: DiffStatus;
+  endpoint: string;
+  label: string;
+  a: NetworkSideStats | null;
+  b: NetworkSideStats | null;
+}
+
+export type DiffEntity = ProcessDiffEntity | FileDiffEntity | NetworkDiffEntity;
+
+export interface DiffGraphNodeSide {
+  firstSeenMs: number;
+  lastSeenMs: number;
+  eventCount: number;
+  stats: Record<string, unknown>;
+}
+
+export interface DiffGraphNode {
+  id: string;
+  kind: "process" | "file" | "network";
+  fingerprint: string;
+  label: string;
+  sublabel: string;
+  status: DiffStatus;
+  ambiguous: boolean;
+  a: DiffGraphNodeSide | null;
+  b: DiffGraphNodeSide | null;
+}
+
+export interface DiffGraphEdge {
+  from: string;
+  to: string;
+  kind: "spawn" | "access" | "connect";
+  status: DiffStatus;
+  eventCountA: number;
+  eventCountB: number;
+  firstSeenMs: number;
+}
+
+export interface DiffGraph {
+  nodes: DiffGraphNode[];
+  edges: DiffGraphEdge[];
+  truncated: boolean;
+  totalFileEntities: number;
+}
+
+export type DiffStreamItem =
+  | {
+      itemKind: "event";
+      side: DiffSide;
+      entityKind: "process" | "file" | "network";
+      fingerprint: string;
+      entityLabel: string;
+      offsetMs: number;
+      event: GhostGlassEvent;
+    }
+  | {
+      itemKind: "changed";
+      entityKind: "process" | "file" | "network";
+      fingerprint: string;
+      label: string;
+      sublabel: string;
+    };
+
+export interface DeltaNumber {
+  a: number;
+  b: number;
+  delta: number;
+}
+
+export interface SummaryDiff {
+  durationMs: DeltaNumber;
+  processCount: DeltaNumber;
+  eventCount: DeltaNumber;
+  exitCode: { a: number | null; b: number | null; changed: boolean };
+  interrupted: { a: boolean; b: boolean; changed: boolean };
+  filesystem: {
+    total: DeltaNumber;
+    read: DeltaNumber;
+    write: DeltaNumber;
+    create: DeltaNumber;
+    delete: DeltaNumber;
+    rename: DeltaNumber;
+    mkdir: DeltaNumber;
+  };
+  networkAttempts: DeltaNumber;
+}
+
+export interface RunDiff {
+  runA: RunMetadata;
+  runB: RunMetadata;
+  summary: SummaryDiff;
+  processes: ProcessDiffEntity[];
+  files: FileDiffEntity[];
+  network: NetworkDiffEntity[];
+  graph: DiffGraph;
+  stream: DiffStreamItem[];
+  streamTruncated: boolean;
+}

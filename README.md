@@ -122,6 +122,97 @@ The API only serves GhostGlass run data, and every trace string is rendered
 as inert text — hostile filenames or command lines in a trace cannot inject
 markup or scripts.
 
+## Compare Runs
+
+```sh
+ghostglass diff latest previous
+```
+
+opens an interactive side-by-side comparison of two traces in the local
+viewer. GhostGlass matches processes by executable + captured argv + parent
+executable (not by PID, so equivalent runs match even when PIDs differ),
+files by path, and network endpoints by IP:port. Processes whose identity
+was never captured (threads, or children whose execve the tracer skipped)
+are grouped per run as "Unknown (N processes)" and never matched across
+runs — GhostGlass won't invent a relationship the trace doesn't support.
+Everything else is reported as **shared**, **changed**, **only in Run A**,
+or **only in Run B**.
+
+- **Summary comparison** — duration, process count, file/network activity,
+  exit code, and interrupted state, each with its Δ.
+- **Combined execution graph** — one graph for both runs; node borders and
+  badges mark the four statuses (solid = shared, thick = changed, dashed =
+  only in A, dotted = only in B). Modes: Differences Only, All, Only A,
+  Only B, Shared; toggle process/file/network layers.
+- **Dual timeline** — both runs' activity side by side, in real time or
+  normalized 0→100% for structural comparison.
+- **Difference stream** — changed entities plus only-A/only-B events, with
+  side/kind filters and free-text search.
+- **Comparative inspectors** — click any node or row for Run A / Run B / Δ
+  stats: file action counts, process children and network use, connection
+  attempts.
+
+```sh
+ghostglass diff <run-a> <run-b>             # compare two saved traces
+ghostglass diff latest previous             # the two most recent traces
+ghostglass diff <run-a> <run-b> --no-browser  # print the URL, don't launch a browser
+ghostglass diff <run-a> <run-b> --port 8080   # listen on a different local port
+```
+
+The terminal prints a compact A/B/Δ summary before the browser opens.
+Diffs are computed on demand from the saved runs and never persisted; no
+extra storage, no accounts, no network.
+
+## Export Portable Reports
+
+```sh
+ghostglass export latest
+ghostglass export-diff previous latest --output ./comparison.html
+```
+
+writes a **single self-contained HTML file** that opens straight from
+`file://` — no GhostGlass install, no Node.js, no local server, no
+internet. The report reuses the full Run 2/3 viewer (execution graph,
+replay timeline, virtualized event stream, inspectors, diff modes), so
+what you see in the export is what you saw in `ghostglass open`.
+Everything the page needs — markup, styles, scripts, and the trace data —
+is embedded in the one file, and the page makes zero network requests
+(the Content Security Policy forbids them: `connect-src 'none'`).
+
+Use it when the trace needs to travel: attach it to a bug report, drop it
+in a shared drive, archive it with a release, or generate it in CI as a
+build artifact. A `--format json` variant exports the same data as
+machine-readable JSON.
+
+```sh
+ghostglass export <run-id>                        # ghostglass-<run-id>.html
+ghostglass export latest -o ./trace.html          # custom output path
+ghostglass export latest --format json            # machine-readable JSON
+ghostglass export-diff <a> <b>                    # ghostglass-diff-<a>-vs-<b>.html
+ghostglass export-diff previous latest -o ./c.html
+```
+
+Export is always explicit and entirely local — GhostGlass never uploads
+anything, and never overwrites an existing file unless you pass `--force`.
+Non-interactive and CI-friendly: no browser is ever launched.
+
+**Redaction.** Trace data can contain secrets. Four flags rewrite the
+exported copy (the saved trace on disk is never touched):
+
+```sh
+ghostglass export latest --redact-home       # /home/you/... -> <HOME>/...
+ghostglass export latest --redact-cwd        # the export-time cwd -> <CWD>
+ghostglass export latest --redact-network    # 10.1.2.3:5432 -> <NETWORK>:5432
+ghostglass export latest --redact-args       # argv beyond the executable -> <ARGS REDACTED>
+```
+
+Redaction happens before the graph and diff are derived, so redacted
+values appear **nowhere** in the HTML source — not just hidden in the UI.
+The CLI prints a privacy reminder on every export, and the report itself
+carries one. All trace strings are treated as untrusted: `<` is escaped in
+the embedded data, `</script>` sequences are neutralized, malformed
+Unicode is sanitized, and everything renders as inert text.
+
 ## Example
 
 Trace a real install and replay it:
@@ -179,6 +270,10 @@ ghostglass runs                # list recent traces
 ghostglass show <run-id>       # show a saved trace summary
 ghostglass open <run-id>       # replay a trace in the visual viewer
 ghostglass open latest         # replay the most recent trace
+ghostglass diff <run-a> <run-b>  # compare two traces side by side
+ghostglass diff latest previous  # compare the two most recent traces
+ghostglass export latest         # portable HTML report (opens from file://)
+ghostglass export-diff <a> <b>   # portable HTML comparison report
 ```
 
 Each run is stored locally under `.ghostglass/runs/<run-id>/`:

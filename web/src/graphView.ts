@@ -372,7 +372,11 @@ export class GraphView {
       panning = true;
       sx = e.clientX;
       sy = e.clientY;
-      svg.setPointerCapture(e.pointerId);
+      try {
+        svg.setPointerCapture(e.pointerId);
+      } catch {
+        /* pointer capture is best-effort; panning works without it */
+      }
     });
     svg.addEventListener("pointermove", (e) => {
       if (!panning) return;

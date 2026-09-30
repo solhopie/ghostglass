@@ -30,6 +30,9 @@ import type { GhostGlassEvent } from "../events/types.js";
 import type { RunSummary } from "../summary/summarize.js";
 import { buildGraphFromEvents } from "./indexer.js";
 import type { ApiEventsPage, ApiGraph, ApiRunDetail, ApiRunListItem, ApiTimeline } from "./protocol.js";
+import { compareRuns } from "../diff/compareRuns.js";
+import { loadRunData } from "../diff/loadRuns.js";
+import type { RunDiff } from "../diff/types.js";
 
 export const DEFAULT_VIEWER_PORT = 7777;
 export const VIEWER_HOST = "127.0.0.1";
@@ -78,6 +81,7 @@ export interface ViewerServerOptions {
 export class ViewerServer {
   private server: Server | null = null;
   private cache = new Map<string, CachedRun>();
+  private diffCache = new Map<string, RunDiff>();
   private readonly cwd: string;
   private readonly host: string;
   private readonly preferredPort: number;
@@ -184,6 +188,24 @@ export class ViewerServer {
     return run.graph;
   }
 
+  private async getDiff(runA: string, runB: string): Promise<RunDiff | null> {
+    const key = `${runA}<${runB}`;
+    const cached = this.diffCache.get(key);
+    if (cached) return cached;
+    let a, b;
+    try {
+      [a, b] = await Promise.all([
+        loadRunData(this.cwd, runA),
+        loadRunData(this.cwd, runB),
+      ]);
+    } catch {
+      return null;
+    }
+    const diff = compareRuns(a, b);
+    this.diffCache.set(key, diff);
+    return diff;
+  }
+
   private json(res: ServerResponse, status: number, data: unknown): void {
     const body = JSON.stringify(data);
     res.writeHead(status, {
@@ -220,6 +242,23 @@ export class ViewerServer {
         });
       }
       this.json(res, 200, { runs: items });
+      return;
+    }
+
+    const diffMatch = path.match(/^\/api\/diff\/([^/]+)\/([^/]+)$/);
+    if (diffMatch) {
+      const idA = decodeURIComponent(diffMatch[1] as string);
+      const idB = decodeURIComponent(diffMatch[2] as string);
+      if (!isValidRunId(idA) || !isValidRunId(idB)) {
+        this.json(res, 400, { error: "invalid run id" });
+        return;
+      }
+      const diff = await this.getDiff(idA, idB);
+      if (!diff) {
+        this.json(res, 404, { error: "run not found" });
+        return;
+      }
+      this.json(res, 200, diff);
       return;
     }
 
@@ -289,14 +328,16 @@ export class ViewerServer {
       }
     }
 
-    // Viewer page routes: "/" (run picker) and "/runs/<id>".
-    if (path === "/" || /^\/runs\/[^/]+$/.test(path)) {
+    // Viewer page routes: "/" (run picker), "/runs/<id>", and "/diff/<a>/<b>".
+    if (path === "/" || /^\/runs\/[^/]+$/.test(path) || /^\/diff\/[^/]+\/[^/]+$/.test(path)) {
       if (path !== "/") {
-        const rawId = decodeURIComponent(path.slice("/runs/".length));
-        if (!isValidRunId(rawId)) {
-          res.writeHead(404, { "content-type": "text/plain" });
-          res.end("not found");
-          return;
+        const parts = path.slice(1).split("/");
+        for (const rawId of parts.slice(1)) {
+          if (!isValidRunId(decodeURIComponent(rawId))) {
+            res.writeHead(404, { "content-type": "text/plain" });
+            res.end("not found");
+            return;
+          }
         }
       }
       await this.serveStatic(res, join(WEB_DIST, "index.html"), ".html");

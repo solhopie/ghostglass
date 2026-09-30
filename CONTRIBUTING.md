@@ -28,15 +28,15 @@ that has Node.js 18+.
 npm install
 npm run dev        # typecheck in watch mode
 npm run build
-npm test           # build + full test suite (76 tests)
+npm test           # build + full test suite (137 tests)
 npm run lint
 npm run typecheck
 ```
 
 Requirements for a PR:
 
-1. `npm test` passes (76 tests: unit + real end-to-end traces via strace +
-   viewer API and jsdom frontend tests).
+1. `npm test` passes (137 tests: unit + real end-to-end traces via strace +
+   viewer API and jsdom frontend tests + static export tests).
 2. `npm run lint` and `npm run typecheck` are clean (strict TypeScript).
 3. New behavior has tests. Parser changes get canned-line unit tests in
    `test/parser.test.ts`; end-to-end behavior gets coverage in

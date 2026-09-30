@@ -3,6 +3,115 @@
 All notable changes to GhostGlass are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-09-30
+
+Run 4: portable reports — export any trace as a single self-contained HTML
+file that opens from `file://` with no install, no server, no internet.
+
+### Added
+
+- `ghostglass export <run-id> | latest [--format html|json] [-o <path>]
+  [--force]`: writes a single-file HTML report (default) or machine-readable
+  JSON. The HTML reuses the full Run 2/3 viewer — execution graph, replay
+  timeline, virtualized event stream, inspectors — booted from an embedded
+  data envelope instead of the live API, so the report works offline from a
+  plain file URL. Filenames default to `ghostglass-<run-id>.html`;
+  `--force` is required to overwrite; parent directories are created.
+- `ghostglass export-diff <run-a> <run-b> | previous latest [...]`: same
+  treatment for comparisons — the full diff viewer (status-coded graph,
+  mode filters, dual timelines, difference stream) in one file, default
+  `ghostglass-diff-<a>-vs-<b>.html`.
+- Redaction flags, applied to an in-memory copy before the graph/diff are
+  derived (saved traces are never modified): `--redact-home`,
+  `--redact-cwd`, `--redact-network` (IP masked, port kept),
+  `--redact-args` (argv beyond the executable replaced). Redacted values
+  appear nowhere in the HTML source — verified by tests that grep the raw
+  output for every original secret.
+- Security hardening for untrusted trace data: `<` escaped as `\u003c` in
+  the embedded JSON, `</script>`/`<!--` sequences neutralized in inline
+  scripts, lone UTF-16 surrogates sanitized, all trace strings rendered as
+  inert text, and a real Content-Security-Policy
+  (`default-src 'none'; connect-src 'none'; …`) that still permits the
+  static report to run. Print stylesheet included.
+- Privacy by default: the CLI prints a warning on every export and the
+  report carries one; export is always explicit, entirely local, and never
+  uploads — no telemetry, no accounts, no network requests (verified zero
+  in a real browser).
+- 32 new tests (137 total): run/diff HTML+JSON export, latest/previous
+  resolution, custom output, --force semantics, overwrite refusal, invalid
+  format/ID/traversal rejection, all four redaction flags with
+  source-level absence checks, `</script>`/HTML/JS injection payloads,
+  malformed Unicode, zero-external-dependency scan of the template,
+  graph/timeline/inspector data presence, diff classifications, 12,000-event
+  export, byte-determinism, filename sanitization, JSON schema checks.
+
+### Measured (55,000-event trace)
+
+- HTML export: 566 ms, 11.1 MB. JSON export: 467 ms, 9.8 MB.
+- Real Chromium via file://: full render in 2.5 s (2,028 graph nodes),
+  10 MB JS heap, virtualized stream (18 rows), timeline scrub 13 ms,
+  zero console errors, zero network requests.
+
+### Fixed
+
+- `setPointerCapture` in the timeline and both graph views threw an
+  uncaught DOMException on synthetic pointer events (found by the new
+  browser interaction suite); pointer capture is now best-effort and can no
+  longer break scrubbing, panning, or dragging.
+- Compiled CLI reported `0.0.0-dev` because the version lookup resolved the
+  wrong `package.json` from `dist/`; it now walks up to the owning
+  `ghostglass` package (reports `0.4.0`).
+
+## [0.3.0] - 2026-09-30
+
+Run 3: the diff — compare two traces side by side.
+
+### Added
+
+- `ghostglass diff <run-a> <run-b>`: interactive comparison of two saved
+  traces in the local web viewer. `latest`/`previous` aliases resolve to the
+  two most recent traces; `--no-browser` prints the URL without launching a
+  browser; `--port <n>` overrides the default `127.0.0.1:7777`. The terminal
+  prints a compact A/B/Δ summary before the browser opens.
+- Diff engine (`src/diff/`): processes matched by executable + captured argv
+  + parent executable (PID-independent, so equivalent runs match despite
+  different PIDs), files by normalized path, network endpoints by IP:port.
+  Every entity is classified shared / changed / only-a / only-b; repeated
+  identical processes are aggregated and flagged ambiguous rather than
+  paired arbitrarily. Map/set-based indexing — no O(n²) entity comparison.
+- Viewer API `GET /api/diff/<run-a>/<run-b>` and page `/diff/<run-a>/<run-b>`,
+  with the same strict run-ID validation and inert-text rendering as the
+  single-run viewer. Diffs are computed on demand from the saved runs and
+  never persisted; no extra storage, no accounts, no network.
+- Visual diff: combined execution graph (status-coded borders and badges,
+  never color alone) with Differences Only / All / Only A / Only B / Shared
+  modes and process/file/network layer toggles; dual run timeline with real
+  and normalized modes; difference stream with side/kind filters and search;
+  comparative inspectors showing Run A / Run B / Δ per node.
+- Deterministic demo fixtures `test/fixtures/demo-a.cjs` / `demo-b.cjs`
+  (local-only, no internet) for trying the diff out:
+  `ghostglass run -- node test/fixtures/demo-a.cjs`,
+  `ghostglass run -- node test/fixtures/demo-b.cjs`,
+  `ghostglass diff previous latest`.
+- 29 new tests (105 total): diff engine (matching, classification, summary
+  deltas, fingerprints, ambiguity, unknown-process separation, 24k-event
+  performance), diff CLI (latest/previous resolution, invalid-ID and
+  traversal rejection), viewer diff API (shape, 400/404 handling, localhost
+  binding, shutdown), and jsdom frontend tests (graph modes, layer toggles,
+  stream filters, search, timeline normalization, inspectors, hostile-string
+  rendering).
+
+### Documented limitations
+
+- Diff graphs cap file nodes at 600 for rendering (noted in the UI); the
+  difference stream is capped at 5,000 rows (noted in the UI).
+- Argv differences make two processes different entities by design; temp
+  files with random names are never merged.
+- Processes whose executable and argv were never captured (threads, or
+  children whose execve arrived as an unfinished/resumed fragment the
+  tracer skips per its documented Run 1 limitation) are aggregated per run
+  as "Unknown (N processes)" and never matched across runs.
+
 ## [0.2.0] - 2026-09-30
 
 Run 2: the visual execution replay.

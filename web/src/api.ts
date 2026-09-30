@@ -1,14 +1,20 @@
 /** Thin fetch client for the local viewer API. Same-origin, no auth. */
+import { getStaticResponse } from "./staticData.js";
 import type {
   ApiGraph,
   ApiRunListItem,
   ApiTimeline,
   GhostGlassEvent,
+  RunDiff,
   RunMetadata,
   RunSummary,
 } from "./types.js";
 
 async function getJson<T>(path: string): Promise<T> {
+  // In a static export the data is embedded in the page; serve it from
+  // memory so every view works unchanged with no server.
+  const staticRes = getStaticResponse(path);
+  if (staticRes.found) return staticRes.value as T;
   const res = await fetch(path, { headers: { accept: "application/json" } });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -43,4 +49,10 @@ export interface EventsPage {
 export function getEventsPage(runId: string, offset: number, limit: number): Promise<EventsPage> {
   const q = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   return getJson(`/api/runs/${encodeURIComponent(runId)}/events?${q.toString()}`);
+}
+
+export function getDiff(runA: string, runB: string): Promise<RunDiff> {
+  return getJson(
+    `/api/diff/${encodeURIComponent(runA)}/${encodeURIComponent(runB)}`,
+  );
 }
