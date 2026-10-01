@@ -3,6 +3,69 @@
 All notable changes to GhostGlass are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.0] - Unreleased
+
+Run 9: Trace Query Engine — one deterministic structured query engine shared
+by the CLI, saved viewer, Live Glass, portable exports, and diff. No AI, no
+natural-language inference, no external services, and no separate query logic
+in the frontend vs the CLI: `src/query/` (types, parser, matcher, indexes,
+`executeQuery`, format) is vendored into the browser bundle by
+`scripts/vendor-query-web.cjs`.
+
+### Added
+
+- `ghostglass query [run-id]` CLI with `--process`, `--pid`, repeated
+  `--action` / `--type`, `--file`, `--path`, `--network`, `--ip`, `--port`,
+  `--since`, `--until`, `--text`, `--reconstructed` / `--not-reconstructed`,
+  `--limit`, `--order time|sequence`, `--json`. Default terminal limit 100
+  with total-match count; `--limit 0` means unlimited.
+- Structured `key:value` query-bar language in the saved viewer and Live
+  Glass: whitespace AND, repeated keys OR, quoted values. Presets, match
+  counts, error display, session-only history, `?q=` deep links.
+- Shared compiled predicates, safe two-pointer glob matching (`*`, `?`,
+  no regex execution), and per-field indexes (PID, action, type, process,
+  path, network, IP/port) with a planner that picks the smallest candidate
+  superset.
+- Temporal process identity: a PID that re-execs keeps the executable it
+  had at each event's sequence; per-PID executable timelines, binary-searched
+  by the matcher and the web stores.
+- Stable in-memory sequence numbers: the parser assigns `sequence` on
+  ingestion; old traces derive it from `events.jsonl` order (never
+  rewritten). Default ordering is (timestamp, sequence); `--order sequence`
+  replays ingestion/emission order.
+- Trace-relative inclusive time bounds (`+30s`, `-1m` resolve against the
+  trace start); unknown fields/actions and malformed PID, port, and time
+  values fail with clear errors.
+- Incremental Live Glass matching (query compiled once, each incoming event
+  tested once — no re-query per event); timeline match markers; graph
+  dimming for uninvolved nodes/edges (including full dim on zero matches);
+  `highlight:<rule>` filters derived behavior-highlight records.
+- Per-side independent queries in run diffs; relative time bounds resolve
+  against each side's own trace start.
+- Fully offline querying in portable HTML exports (zero external requests).
+- Timeline `/api/timeline` now also returns `timeOrder` (event indices
+  sorted by timestamp, then sequence) so replay seeking maps time positions
+  to the correct emission-ordered event when the two orders differ
+  (reconstructed split syscalls). Pre-Run-9 exports fall back to the legacy
+  behavior.
+- 75 new tests: parser, matcher, indexes/planner, ordering, relative time,
+  error handling, temporal process identity, large-union regression (300k
+  events), paged sequence fallback, timeline timeOrder.
+
+### Performance
+
+500,000 synthetic events: index build ~0.36s, common queries 20–45ms,
+compound queries ~40–105ms, full text scan ~0.24–0.33s, incremental scan
+~65–130ns/event, heap ~179MB / RSS ~311MB.
+
+### Fixed
+
+- `RangeError` in the planner when OR-unioning very large candidate lists
+  (spread into `push`).
+- Graph zero-match queries cleared dimming instead of dimming everything.
+- Replay seeking used sorted-timestamps indexes into emission-ordered
+  events, mis-seeking on traces with reconstructed syscalls.
+
 ## [0.8.0] - Unreleased
 
 Run 8: split-syscall reconstruction — reliably rejoin strace

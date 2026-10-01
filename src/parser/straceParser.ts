@@ -283,9 +283,10 @@ function makeEvent(
   pid: number,
   fields: Partial<GhostGlassEvent> = {},
 ): GhostGlassEvent {
-  const id = `${ctx.runId}-${String(ctx.seq.n).padStart(6, "0")}`;
+  const sequence = ctx.seq.n;
+  const id = `${ctx.runId}-${String(sequence).padStart(6, "0")}`;
   ctx.seq.n++;
-  return { id, runId: ctx.runId, timestamp, type, action, pid, ...fields };
+  return { id, runId: ctx.runId, timestamp, sequence, type, action, pid, ...fields };
 }
 
 /**

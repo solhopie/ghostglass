@@ -7,6 +7,7 @@ import { exportCommand, exportDiffCommand } from "./commands/export.js";
 import { watchCommand } from "./commands/watch.js";
 import { whyCommand } from "./commands/why.js";
 import { highlightsCommand } from "./commands/highlights.js";
+import { queryCommand } from "./commands/query.js";
 import { readPackageVersion } from "./version.js";
 
 export function buildProgram(): Command {
@@ -210,6 +211,58 @@ export function buildProgram(): Command {
         });
       },
     );
+
+  program
+    .command("query")
+    .description("Deterministically search a saved trace (no AI, structured filters only)")
+    .argument("[run-id]", 'run ID, e.g. gg_20260930_001, or "latest" (default)')
+    .option("--process <name>", "Match executable basename, path, or path suffix")
+    .option("--pid <n>", "Match an exact process ID")
+    .option("--action <action>", "Match an action (repeatable: OR semantics)", collect, [] as string[])
+    .option("--type <type>", "Match an event type: process, file, network (repeatable: OR)", collect, [] as string[])
+    .option("--file <path>", "Match a file by basename or path suffix")
+    .option("--path <pattern>", "Match event paths with a * / ? glob")
+    .option("--network", "Only network events")
+    .option("--ip <ip>", "Match a destination IP exactly")
+    .option("--port <port>", "Match a destination port exactly")
+    .option("--since <time>", "Events at or after this time: trace-relative (e.g. +1.5s, 500ms) or absolute (2026-10-01T10:00:02Z)")
+    .option("--until <time>", "Events at or before this time: trace-relative or absolute")
+    .option("--text <text>", "Case-insensitive substring over displayable event fields")
+    .option("--reconstructed", "Only events from reconstructed split syscalls")
+    .option("--not-reconstructed", "Exclude reconstructed events")
+    .option("--limit <n>", "Max events to show (default 100, 0 = unlimited)")
+    .option("--order <order>", 'Result order: "time" (default) or "sequence"')
+    .option("--json", "Output the result as JSON for automation")
+    .action(
+      async (
+        runId: string | undefined,
+        options: {
+          process?: string;
+          pid?: string;
+          action?: string[];
+          type?: string[];
+          file?: string;
+          path?: string;
+          network?: boolean;
+          ip?: string;
+          port?: string;
+          since?: string;
+          until?: string;
+          text?: string;
+          reconstructed?: boolean;
+          notReconstructed?: boolean;
+          limit?: string;
+          order?: string;
+          json?: boolean;
+        },
+      ) => {
+        await queryCommand(runId, { cwd: process.cwd(), ...options });
+      },
+    );
+
+  function collect(value: string, previous: string[]): string[] {
+    return [...previous, value];
+  }
 
   return program;
 }

@@ -800,3 +800,42 @@ g.hl-badge .hl-dot { display: block; }
 
 .diff-why-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 .diff-why-row .why-btn { margin-top: 0; }
+
+/* Trace query bar (Run 9) */
+.gg-querybar { padding: 8px 12px 0; }
+.qbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.qbar-input {
+  flex: 1 1 320px; min-width: 200px; padding: 7px 10px;
+  background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
+  border-radius: 6px; font-family: ui-monospace, monospace; font-size: 13px;
+}
+.qbar-input:focus { outline: none; border-color: #22d3ee; }
+.qbar-btn {
+  padding: 7px 14px; background: #1e293b; border: 1px solid #475569;
+  color: #e2e8f0; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.qbar-btn:hover { background: #334155; }
+.qbar-clear { display: none; }
+.qbar-presets {
+  padding: 7px 8px; background: #0f172a; border: 1px solid #334155;
+  color: #cbd5e1; border-radius: 6px; font-size: 13px; cursor: pointer;
+}
+.qbar-status { display: flex; align-items: center; gap: 8px; min-height: 20px; }
+.qbar-count { font-size: 12px; color: #6ee7b7; font-family: ui-monospace, monospace; }
+.qbar-error { font-size: 12px; color: #fca5a5; font-family: ui-monospace, monospace; }
+.qbar-recent { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
+.qbar-recent-label { font-size: 11px; color: #64748b; }
+.qbar-recent-chip {
+  padding: 3px 10px; background: #0f172a; border: 1px solid #334155;
+  color: #94a3b8; border-radius: 999px; cursor: pointer; font-size: 11px;
+  font-family: ui-monospace, monospace;
+}
+.qbar-recent-chip:hover { border-color: #22d3ee; color: #e2e8f0; }
+.qbar-help { font-size: 11px; color: #475569; width: 100%; }
+
+/* Query dimming on the graph */
+.qdim { opacity: 0.08 !important; }
+
+/* Diff per-side queries */
+.diff-side-query { margin-top: 6px; }
+.diff-query-error { font-size: 12px; color: #fca5a5; font-family: ui-monospace, monospace; }

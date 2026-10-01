@@ -69,6 +69,7 @@ export class GraphView {
         this.pulseNodes(store.nodeIdsForHighlight(latest));
       }
     });
+    store.on("query", () => this.updateQueryDim());
   }
 
   render(): void {
@@ -125,6 +126,7 @@ export class GraphView {
     this.updateReplay();
     this.updateSelection();
     this.updateHighlightBadges();
+    this.updateQueryDim();
 
     if (graph.truncatedFiles > 0) {
       const note = document.createElement("div");
@@ -550,6 +552,40 @@ export class GraphView {
       } else if (!has && dot) {
         dot.remove();
       }
+    }
+  }
+
+  /** Dim graph nodes/edges not involved in the active trace query. */
+  updateQueryDim(): void {
+    const s = this.store;
+    const clear = () => {
+      for (const [, g] of this.nodeEls) g.classList.remove("qdim");
+      for (const { el } of this.edgeEls) el.classList.remove("qdim");
+    };
+    if (s.query === null) {
+      clear();
+      return;
+    }
+    if (s.queryMatches.length === 0) {
+      // Active query, zero matches: nothing is involved — dim everything.
+      for (const [, g] of this.nodeEls) g.classList.add("qdim");
+      for (const { el } of this.edgeEls) el.classList.add("qdim");
+      return;
+    }
+    // Cap the node resolution work; the match count in the query bar is exact.
+    const involved = new Set<string>();
+    const cap = 20000;
+    const n = Math.min(s.queryMatches.length, cap);
+    for (let i = 0; i < n; i++) {
+      const ev = s.events[s.queryMatches[i] as number];
+      if (!ev) continue;
+      for (const nid of s.nodeIdsForEvent(ev)) involved.add(nid);
+    }
+    for (const [nid, g] of this.nodeEls) {
+      g.classList.toggle("qdim", !involved.has(nid));
+    }
+    for (const { edge, el } of this.edgeEls) {
+      el.classList.toggle("qdim", !involved.has(edge.from) && !involved.has(edge.to));
     }
   }
 

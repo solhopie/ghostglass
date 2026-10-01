@@ -22,6 +22,7 @@ export class TimelineView {
     store.on("events", () => this.rebuildBuckets());
     store.on("replay", () => this.draw());
     store.on("highlights", () => this.draw());
+    store.on("query", () => this.draw());
   }
 
   render(): void {
@@ -211,6 +212,22 @@ export class TimelineView {
           ctx.lineWidth = 1.5;
           ctx.stroke();
         }
+      }
+    }
+
+    // query match markers (small ticks along the bottom edge)
+    if (s.query !== null && s.durationMs > 0) {
+      ctx.fillStyle = "rgba(52, 211, 153, 0.9)";
+      const cap = 20000; // marker drawing is capped; count is exact in the query bar
+      const matches = s.queryMatches;
+      const n = Math.min(matches.length, cap);
+      for (let i = 0; i < n; i++) {
+        const ev = s.events[matches[i] as number];
+        if (!ev) continue;
+        const frac = (ev.timestamp - s.startTimeMs) / s.durationMs;
+        if (frac < 0 || frac > 1) continue;
+        const x = frac * w;
+        ctx.fillRect(x, trackH - 5, 2, 5);
       }
     }
 

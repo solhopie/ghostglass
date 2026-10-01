@@ -20,6 +20,7 @@ import { HighlightPanel } from "./highlightPanel.js";
 import { InspectorView } from "./inspectorView.js";
 import { LiveHeaderView } from "./liveHeaderView.js";
 import { LiveStore } from "./liveStore.js";
+import { QueryBar } from "./queryBar.js";
 import { StreamView } from "./streamView.js";
 import { TimelineView } from "./timelineView.js";
 import { CauseChainView } from "./causeChainView.js";
@@ -90,6 +91,7 @@ async function bootRun(runId: string): Promise<void> {
   app.innerHTML = "";
 
   const header = el("header", "gg-header");
+  const queryHost = el("div", "gg-querybar");
   const main = el("main", "gg-main");
   const graphSection = el("section", "gg-graph");
   const side = el("aside", "gg-side");
@@ -101,11 +103,13 @@ async function bootRun(runId: string): Promise<void> {
   main.appendChild(side);
   const footer = el("footer", "gg-timeline");
   app.appendChild(header);
+  app.appendChild(queryHost);
   app.appendChild(main);
   app.appendChild(footer);
 
   const store = new Store(runId);
   const headerView = new HeaderView(header, store);
+  const queryBar = new QueryBar(queryHost, store);
   const graphView = new GraphView(graphSection, store);
   const streamView = new StreamView(streamHost, store);
   const causeHost = el("div", "gg-causechain");
@@ -123,6 +127,7 @@ async function bootRun(runId: string): Promise<void> {
   void causeChainView;
 
   headerView.render();
+  queryBar.render();
   streamView.render();
   timelineView.render();
   highlightPanel.render();
@@ -135,13 +140,18 @@ async function bootRun(runId: string): Promise<void> {
       getHighlights(runId).catch(() => ({ highlights: [] as Highlight[] })),
     ]);
     store.setRunData(detail.metadata, detail.summary, graph);
-    store.setTimeline(timeline.startTimeMs, timeline.timestamps);
+    store.setTimeline(timeline.startTimeMs, timeline.timestamps, timeline.timeOrder);
     store.setHighlights(hl.highlights);
     headerView.render();
     graphView.render();
     inspectorView.render();
     timelineView.render();
     highlightPanel.render();
+    // Restore a saved query from the URL (?q=...), applied before the
+    // event stream loads so matches accumulate incrementally.
+    const savedQuery = new URLSearchParams(window.location.search).get("q");
+    if (savedQuery) store.setQuery(savedQuery);
+    queryBar.render();
     // Deep link: /runs/<id>?why=<kind:value> opens the cause chain directly.
     const whyTarget = parseWhyTarget(new URLSearchParams(window.location.search).get("why"));
     if (whyTarget) void causeChainView.showFor(store.runId, whyTarget);
@@ -163,6 +173,7 @@ async function bootLive(runId: string): Promise<void> {
   app.innerHTML = "";
 
   const header = el("header", "gg-header");
+  const queryHost = el("div", "gg-querybar");
   const main = el("main", "gg-main");
   const graphSection = el("section", "gg-graph");
   const side = el("aside", "gg-side");
@@ -174,11 +185,13 @@ async function bootLive(runId: string): Promise<void> {
   main.appendChild(side);
   const footer = el("footer", "gg-timeline");
   app.appendChild(header);
+  app.appendChild(queryHost);
   app.appendChild(main);
   app.appendChild(footer);
 
   const store = new LiveStore(runId);
   const headerView = new LiveHeaderView(header, store);
+  const queryBar = new QueryBar(queryHost, store);
   const graphView = new GraphView(graphSection, store);
   const streamView = new StreamView(streamHost, store);
   const causeHost = el("div", "gg-causechain");
@@ -198,9 +211,15 @@ async function bootLive(runId: string): Promise<void> {
   void causeChainView;
 
   headerView.render();
+  queryBar.render();
   streamView.render();
   timelineView.render();
   highlightPanel.render();
+
+  // Restore a shared live query from the URL (?q=...), applied before
+  // connecting so incoming events match incrementally from the start.
+  const savedLiveQuery = new URLSearchParams(window.location.search).get("q");
+  if (savedLiveQuery) store.setQuery(savedLiveQuery);
 
   try {
     await store.connect();

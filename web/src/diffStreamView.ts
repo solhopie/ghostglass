@@ -98,6 +98,38 @@ export class DiffStreamView {
     search.setAttribute("aria-label", "Search differences");
     search.addEventListener("input", () => this.store.setSearch(search.value));
     bar.appendChild(search);
+
+    // Per-side trace queries (Run 9): same key:value syntax as the viewer.
+    for (const side of ["a", "b"] as const) {
+      const q = document.createElement("input");
+      q.className = "diff-search diff-side-query";
+      q.placeholder = `Query side ${side.toUpperCase()}…  e.g. process:node action:write`;
+      q.value = side === "a" ? this.store.sideQueryA : this.store.sideQueryB;
+      q.setAttribute("aria-label", `Query side ${side.toUpperCase()} events`);
+      q.title = "Trace query applied to this side's events (changed rows unaffected)";
+      let timer = 0;
+      q.addEventListener("input", () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => this.store.setSideQuery(side, q.value), 150);
+      });
+      q.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          window.clearTimeout(timer);
+          this.store.setSideQuery(side, q.value);
+        }
+        if (e.key === "Escape") {
+          q.value = "";
+          this.store.setSideQuery(side, "");
+        }
+      });
+      bar.appendChild(q);
+      const err = side === "a" ? this.store.sideQueryErrorA : this.store.sideQueryErrorB;
+      if (err) {
+        const errEl = el("span", "diff-query-error");
+        text(errEl, err);
+        bar.appendChild(errEl);
+      }
+    }
     return bar;
   }
 

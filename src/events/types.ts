@@ -37,6 +37,18 @@ export interface GhostGlassEvent {
   runId: string;
   /** Epoch milliseconds, derived from the tracer's timestamp. */
   timestamp: number;
+  /**
+   * Ingestion/emission order within the run, starting at 1. This is the
+   * stable GhostGlass sequence: the order events were received and emitted.
+   * It is NOT the same as timestamp order — a reconstructed syscall carries
+   * its syscall-start timestamp but is emitted when its resumed fragment
+   * arrives, so it can legitimately follow events with later timestamps.
+   *
+   * Optional for backward compatibility: runs recorded before sequence
+   * numbers existed have no stored value; readers derive it in memory from
+   * events.jsonl file order (which is emission order).
+   */
+  sequence?: number;
   type: GhostGlassEventType;
   action: GhostGlassEventAction;
   /** PID of the process that performed the activity. */

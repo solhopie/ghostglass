@@ -27,5 +27,6 @@ coverage/
 .env.*
 !.env.example
 
-# Vendored cause engine (build artifact; src/cause is the source of truth)
+# Vendored engines (build artifacts; src/cause and src/query are the sources of truth)
 web/src/cause/
+web/src/query/

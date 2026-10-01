@@ -180,11 +180,13 @@ export class LiveStore extends Store {
     }
     if (fresh.length === 0) return;
 
+    const startIdx = this.events.length;
     for (const e of fresh) {
       this.events.push(e);
       this.timestamps.push(e.timestamp);
     }
     this.eventsTotal = this.events.length;
+    this.matchNewEvents(startIdx);
 
     this.lastPulseIds = this.acc.apply(fresh);
     Object.assign(this.counters, this.acc.counters);
@@ -198,6 +200,7 @@ export class LiveStore extends Store {
       this.lastEventsEmit = now;
       this.emit("events");
       this.emit("data");
+      this.flushQueryEmit();
     }
     const graphMs = this.highActivity ? GRAPH_EMIT_HIGH_ACTIVITY_MS : GRAPH_EMIT_MS;
     if (now - this.lastGraphEmit >= graphMs) {

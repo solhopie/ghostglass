@@ -14,7 +14,11 @@ import type {
   RunSummary,
 } from "./types.js";
 import type { CauseChain } from "./cause/index.js";
-import { eventIndexAt } from "./format.js";
+import { eventIndexAt, eventIndexAtOrdered } from "./format.js";
+import { assignSequences } from "./query/executeQuery.js";
+import { compileQuery, executableForPid, type EventPredicate } from "./query/matcher.js";
+import { parseQuery } from "./query/parser.js";
+import { QueryError, type QueryContext, type TraceQuery } from "./query/types.js";
 
 export type Selection =
   | { kind: "node"; nodeId: string }
@@ -22,7 +26,7 @@ export type Selection =
   | { kind: "highlight"; highlightId: string }
   | null;
 
-export type Topic = "data" | "events" | "replay" | "selection" | "filters" | "graph" | "highlights" | "causechain";
+export type Topic = "data" | "events" | "replay" | "selection" | "filters" | "graph" | "highlights" | "causechain" | "query";
 
 export interface HighlightFilters {
   category: "all" | HighlightCategory;
@@ -39,6 +43,8 @@ export class Store {
 
   /** Absolute epoch ms per event index, ascending. */
   timestamps: number[] = [];
+  /** Event indices sorted by (timestamp, sequence); null for pre-Run-9 exports. */
+  timeOrder: number[] | null = null;
   /** Events loaded so far, in trace order. */
   events: GhostGlassEvent[] = [];
   eventsTotal = 0;
@@ -68,6 +74,23 @@ export class Store {
   causePathIndex = 0;
   causeLoading = false;
   causeError: string | null = null;
+
+  // trace query (Run 9): structured event filtering shared with the CLI.
+  queryText = "";
+  /** Event predicates from the query; the `highlight` clause is stripped. */
+  query: TraceQuery | null = null;
+  /** Highlight rule clause, applied to the highlight panel (not events). */
+  queryHighlightRule: string | null = null;
+  queryError: string | null = null;
+  /** Indices into `events` matching the active query. */
+  queryMatches: number[] = [];
+  private queryPredicate: EventPredicate | null = null;
+  /** Incremental pid → [(sequence, executable)] timelines backing process matching. */
+  private readonly queryExeTimelines = new Map<number, { seq: number; exe: string }[]>();
+  private queryCtx: QueryContext = {
+    executableForPid: executableForPid(this.queryExeTimelines),
+  };
+  private queryDirty = false;
   /**
    * Live mode only: while true the UI reduces expensive animation
    * (no node pulses, slower graph emits). Saved runs never set this.
@@ -116,17 +139,113 @@ export class Store {
     this.emit("graph");
   }
 
-  setTimeline(startTimeMs: number, timestamps: number[]): void {
+  setTimeline(startTimeMs: number, timestamps: number[], timeOrder?: number[]): void {
     this.startTimeMs = startTimeMs;
     this.timestamps = timestamps;
+    this.timeOrder = timeOrder ?? null;
     this.eventsTotal = timestamps.length;
     this.emit("events");
   }
 
   appendEvents(events: GhostGlassEvent[], done: boolean): void {
+    const startIdx = this.events.length;
+    // Offset keeps sequences globally unique across paged loads.
+    assignSequences(events, startIdx);
     this.events.push(...events);
     this.eventsDone = done;
+    this.matchNewEvents(startIdx);
     this.emit("events");
+    this.flushQueryEmit();
+  }
+
+  /** True when a query is actively filtering the view. */
+  hasQuery(): boolean {
+    return this.query !== null || this.queryHighlightRule !== null;
+  }
+
+  /**
+   * Apply a compact query string (`process:node action:write`). Relative
+   * times resolve against the trace start. Malformed queries set
+   * queryError and match nothing; they never throw.
+   */
+  setQuery(text: string): void {
+    this.queryText = text;
+    this.query = null;
+    this.queryPredicate = null;
+    this.queryMatches = [];
+    this.queryHighlightRule = null;
+    this.queryError = null;
+    const trimmed = text.trim();
+    if (trimmed.length === 0) {
+      this.emit("query");
+      this.emit("highlights");
+      return;
+    }
+    try {
+      const { query, relativeTimes } = parseQuery(trimmed);
+      if (relativeTimes.since !== undefined) query.since = this.startTimeMs + relativeTimes.since;
+      if (relativeTimes.until !== undefined) query.until = this.startTimeMs + relativeTimes.until;
+      if (query.highlight !== undefined) {
+        this.queryHighlightRule = query.highlight;
+        delete query.highlight;
+      }
+      // An event-predicate-free query (highlight only) still counts as active.
+      const hasEventPredicates = Object.keys(query).length > 0;
+      if (hasEventPredicates) {
+        this.query = query;
+        this.queryPredicate = compileQuery(query, this.queryCtx);
+        this.rebuildQueryMatches();
+      }
+    } catch (err) {
+      this.queryError = err instanceof QueryError ? err.message : String(err);
+    }
+    this.emit("query");
+    this.emit("highlights");
+  }
+
+  clearQuery(): void {
+    this.setQuery("");
+  }
+
+  private rebuildQueryMatches(): void {
+    this.queryMatches = [];
+    this.queryExeTimelines.clear();
+    if (!this.queryPredicate) return;
+    this.matchNewEvents(0);
+  }
+
+  /**
+   * Incrementally match events appended at `from` (inclusive). Records exec
+   * identities on a per-PID timeline so process matching stays correct as
+   * the trace streams in, including PIDs that re-exec. No full re-scan:
+   * the compiled predicate is reused per event.
+   */
+  matchNewEvents(from: number): void {
+    const pred = this.queryPredicate;
+    for (let i = from; i < this.events.length; i++) {
+      const e = this.events[i] as GhostGlassEvent;
+      if (e.action === "exec" && e.executable) {
+        let tl = this.queryExeTimelines.get(e.pid);
+        if (!tl) {
+          tl = [];
+          this.queryExeTimelines.set(e.pid, tl);
+        }
+        // Events arrive in emission order, so timelines stay sorted.
+        tl.push({ seq: e.sequence ?? i + 1, exe: e.executable });
+      }
+      if (pred && pred(e)) {
+        this.queryMatches.push(i);
+        this.queryDirty = true;
+      }
+    }
+  }
+
+  /** Emit "query" if incremental matching added matches since the last emit. */
+  flushQueryEmit(): void {
+    if (this.queryDirty) {
+      this.queryDirty = false;
+      this.emit("query");
+    }
   }
 
   pidLabel(pid: number): string {
@@ -136,7 +255,13 @@ export class Store {
   /** Index of the last event at or before the playhead. */
   currentIndex(): number {
     if (this.timestamps.length === 0) return -1;
-    return eventIndexAt(this.timestamps, this.startTimeMs + this.tMs);
+    const tMs = this.startTimeMs + this.tMs;
+    // Prefer the explicit time order: timestamp order and emission order
+    // differ for reconstructed split syscalls. Legacy exports without
+    // timeOrder fall back to the sorted-timestamps index (their traces
+    // predate reconstruction, where the two orders agreed).
+    if (this.timeOrder) return eventIndexAtOrdered(this.events, this.timeOrder, tMs);
+    return eventIndexAt(this.timestamps, tMs);
   }
 
   currentEvent(): GhostGlassEvent | null {
@@ -228,9 +353,8 @@ export class Store {
   /** Select an event: pause, jump the playhead to it, highlight its nodes. */
   selectEvent(index: number): void {
     this.pause();
-    const ts = this.timestamps[index];
-    if (ts != null) this.tMs = Math.max(0, Math.min(this.durationMs, ts - this.startTimeMs));
     const ev = this.events[index];
+    if (ev) this.tMs = Math.max(0, Math.min(this.durationMs, ev.timestamp - this.startTimeMs));
     this.spotlight = ev ? this.nodeIdsForEvent(ev) : [];
     this.selection = { kind: "event", index };
     this.emit("replay");
@@ -268,10 +392,12 @@ export class Store {
 
   filteredHighlights(): Highlight[] {
     const f = this.highlightFilters;
+    const rule = this.queryHighlightRule;
     return this.highlights.filter(
       (h) =>
         (f.category === "all" || highlightCategory(h) === f.category) &&
-        (f.severity === "all" || h.severity === f.severity),
+        (f.severity === "all" || h.severity === f.severity) &&
+        (rule === null || h.rule === rule),
     );
   }
 

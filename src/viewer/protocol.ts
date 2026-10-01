@@ -112,6 +112,12 @@ export interface ApiTimeline {
   /** Absolute epoch ms of run start. */
   startTimeMs: number;
   endTimeMs: number;
-  /** Absolute epoch ms per event index, ascending. */
+  /** Sorted absolute epoch ms, one per event (histograms, duration). */
   timestamps: number[];
+  /**
+   * Event indices sorted by (timestamp, sequence). Lets the client map a
+   * time position back to the right emission-ordered event when timestamp
+   * order and emission order differ (reconstructed split syscalls).
+   */
+  timeOrder?: number[];
 }

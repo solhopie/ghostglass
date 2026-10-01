@@ -29,7 +29,8 @@ import {
 import type { GhostGlassEvent } from "../events/types.js";
 import type { RunSummary } from "../summary/summarize.js";
 import { buildGraphFromEvents } from "./indexer.js";
-import type { ApiEventsPage, ApiGraph, ApiRunDetail, ApiRunListItem, ApiTimeline } from "./protocol.js";
+import { buildTimelinePayload } from "./replay.js";
+import type { ApiEventsPage, ApiGraph, ApiRunDetail, ApiRunListItem } from "./protocol.js";
 import { compareRuns } from "../diff/compareRuns.js";
 import { loadRunData } from "../diff/loadRuns.js";
 import type { RunDiff } from "../diff/types.js";
@@ -520,13 +521,7 @@ export class ViewerServer {
           return;
         }
         const startTimeMs = Date.parse(run.metadata.startTime);
-        const timestamps = run.events.map((e) => e.timestamp).sort((a, b) => a - b);
-        const timeline: ApiTimeline = {
-          startTimeMs,
-          endTimeMs: timestamps.length > 0 ? (timestamps[timestamps.length - 1] as number) : startTimeMs,
-          timestamps,
-        };
-        this.json(res, 200, timeline);
+        this.json(res, 200, buildTimelinePayload(startTimeMs, run.events));
         return;
       }
       if (suffix === "/highlights") {

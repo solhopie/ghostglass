@@ -22,6 +22,12 @@ export interface GhostGlassEvent {
   id: string;
   runId: string;
   timestamp: number;
+  /**
+   * Ingestion/emission order within the run (starts at 1). Optional for
+   * backward compatibility — old runs lack it; readers derive it in
+   * memory from event order. Never assume timestamp order == sequence.
+   */
+  sequence?: number;
   type: GhostGlassEventType;
   action: GhostGlassEventAction;
   pid: number;
@@ -112,6 +118,14 @@ export interface ApiTimeline {
   startTimeMs: number;
   endTimeMs: number;
   timestamps: number[];
+  /**
+   * Event indices sorted by (timestamp, sequence). Lets the client map a
+   * time position back to the right emission-ordered event when timestamp
+   * order and emission order differ (reconstructed split syscalls).
+   * Absent in exports generated before Run 9; the client falls back to the
+   * legacy sorted-timestamps index.
+   */
+  timeOrder?: number[];
 }
 
 /**

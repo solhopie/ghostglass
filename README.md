@@ -252,6 +252,47 @@ on demand from redacted embedded events, fully offline), and per-side in run
 diffs (`?why=` deep links open each run's own replay — chains are never
 inferred across runs).
 
+## Trace Query Engine
+
+One deterministic structured query engine shared by the CLI, the saved
+viewer, Live Glass, portable exports, and diff. No AI, no natural-language
+inference, no external services — the same parser, matcher, and indexes
+everywhere, vendored from `src/query/` into the browser bundle.
+
+```sh
+ghostglass query latest --process node --action write --action create
+ghostglass query latest --pid 17279 --type network --limit 20 --json
+ghostglass query latest --since +0.1s --until +2s --order sequence
+```
+
+Query syntax: `key:value` pairs, whitespace is AND, repeated keys are OR
+(`action:write action:create`), quoted values for spaces. Fields:
+`process`, `pid`, `action`, `type`, `file`, `path`, `network`, `ip`,
+`port`, `since`, `until`, `text`, `reconstructed`, `highlight`.
+
+- **Semantics:** different fields AND; repeated `--action`/`--type` OR
+  within their field; unknown fields, bad PIDs/ports/times fail with a
+  clear error instead of guessing.
+- **Ordering:** timestamp order by default (tie-broken by ingestion
+  sequence); `--order sequence` replays ingestion/emission order. Old
+  traces derive stable in-memory sequences from `events.jsonl` order and
+  are never rewritten.
+- **Time:** `--since`/`--until` accept ISO timestamps or trace-relative
+  offsets (`+30s`, `-1m`) resolved against the trace start, inclusive.
+- **Limits:** terminal output defaults to 100 rows with a total-match
+  count; `--limit 0` means unlimited.
+- **Safety:** no eval, no SQL, no regex execution, no shell expansion,
+  no arbitrary file reads. Glob matching (`*`, `?`) is a safe two-pointer
+  scan; `?` never crosses `/` in path fields.
+
+In the viewer, the compact query bar filters the stream, marks timeline
+matches, dims non-matching graph nodes, and supports `highlight:<rule>`
+to filter behavior highlights (derived records — never fabricated raw
+events). Results keep Inspect and Show Cause Chain. Live Glass compiles
+the query once and matches each incoming event incrementally. Diff lets
+each side run its own query. Portable HTML exports query fully offline
+with zero external requests.
+
 ## Compare Runs
 
 ```sh
@@ -406,6 +447,7 @@ ghostglass export latest         # portable HTML report (opens from file://)
 ghostglass export-diff <a> <b>   # portable HTML comparison report
 ghostglass highlights latest     # behavior highlights for a trace
 ghostglass why latest --file <path>  # execution path leading to a target
+ghostglass query latest --process node --action write  # structured trace query
 ```
 
 Each run is stored locally under `.ghostglass/runs/<run-id>/`:

@@ -53,6 +53,33 @@ export function eventIndexAt(timestamps: readonly number[], tMs: number): number
   return ans;
 }
 
+/**
+ * Event index of the last event with timestamp <= tMs, or -1. `timeOrder`
+ * holds event indices sorted by (timestamp, sequence); the result indexes
+ * the emission-ordered events array. Mirrors src/viewer/replay.ts.
+ * Not-yet-loaded events (paged streaming) are treated as not qualifying.
+ */
+export function eventIndexAtOrdered(
+  events: readonly { timestamp: number }[],
+  timeOrder: readonly number[],
+  tMs: number,
+): number {
+  let lo = 0;
+  let hi = timeOrder.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const ev = events[timeOrder[mid] as number];
+    if (ev && ev.timestamp <= tMs) {
+      ans = timeOrder[mid] as number;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans;
+}
+
 export function describeEvent(
   e: GhostGlassEvent,
   pidLabel: (pid: number) => string = (pid) => `PID ${pid}`,

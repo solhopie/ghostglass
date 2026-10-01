@@ -14,6 +14,7 @@
 import { loadRunData, runDataExists } from "../diff/loadRuns.js";
 import { compareRuns, type RunData } from "../diff/compareRuns.js";
 import { buildGraphFromEvents } from "../viewer/indexer.js";
+import { buildTimelinePayload } from "../viewer/replay.js";
 import type { ApiGraph, ApiTimeline } from "../viewer/protocol.js";
 import type { RunMetadata } from "../storage/runStore.js";
 import type { RunSummary } from "../summary/summarize.js";
@@ -35,13 +36,7 @@ export interface RunExportModel {
 
 /** Build the timeline payload exactly like the live viewer's /timeline route. */
 export function buildTimeline(metadata: RunMetadata, events: GhostGlassEvent[]): ApiTimeline {
-  const startTimeMs = Date.parse(metadata.startTime);
-  const timestamps = events.map((e) => e.timestamp).sort((a, b) => a - b);
-  return {
-    startTimeMs,
-    endTimeMs: timestamps.length > 0 ? (timestamps[timestamps.length - 1] as number) : startTimeMs,
-    timestamps,
-  };
+  return buildTimelinePayload(Date.parse(metadata.startTime), events);
 }
 
 /**

@@ -45,6 +45,7 @@ export class StreamView {
   ) {
     store.on("events", () => this.recompute());
     store.on("replay", () => this.onReplay());
+    store.on("query", () => this.recompute());
   }
 
   render(): void {
@@ -153,11 +154,18 @@ export class StreamView {
       },
       (pid) => this.store.pidLabel(pid),
     );
-    this.rows = filtered.map((event, i) => ({ event, index: i }));
-    // map back to store.events indexes
+    // Trace query (Run 9): when active, keep only matching events.
+    // The store already ran the compiled predicate; here we select rows.
+    const matchSet = this.store.query !== null ? new Set(this.store.queryMatches) : null;
     const indexOf = new Map<GhostGlassEvent, number>();
     this.store.events.forEach((e, i) => indexOf.set(e, i));
-    for (const r of this.rows) r.index = indexOf.get(r.event) ?? -1;
+    this.rows = [];
+    for (const event of filtered) {
+      const index = indexOf.get(event) ?? -1;
+      if (index < 0) continue;
+      if (matchSet && !matchSet.has(index)) continue;
+      this.rows.push({ event, index });
+    }
     if (this.spacer) this.spacer.style.height = `${this.rows.length * ROW_H}px`;
     this.renderRows();
     this.updateCount();

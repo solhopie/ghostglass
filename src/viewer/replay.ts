@@ -29,6 +29,63 @@ export function eventIndexAt(timestamps: readonly number[], tMs: number): number
   return ans;
 }
 
+/**
+ * Event index of the last event with timestamp <= tMs, or -1 when none
+ * qualifies. `timeOrder` holds event indices sorted by (timestamp, sequence);
+ * the returned value is an index into the emission-ordered events array, so
+ * it stays correct when timestamp order and emission order differ
+ * (reconstructed split syscalls carry the syscall-start timestamp but are
+ * emitted at resume time). Not-yet-loaded events (paged streaming) are
+ * treated as not qualifying, so the result is exact once loading finishes.
+ */
+export function eventIndexAtOrdered(
+  events: readonly GhostGlassEvent[],
+  timeOrder: readonly number[],
+  tMs: number,
+): number {
+  let lo = 0;
+  let hi = timeOrder.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const ev = events[timeOrder[mid] as number] as GhostGlassEvent | undefined;
+    if (ev && ev.timestamp <= tMs) {
+      ans = timeOrder[mid] as number;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans;
+}
+
+/**
+ * Build the timeline payload: sorted timestamps for histograms plus an
+ * explicit `timeOrder` index so the client can map a time position back to
+ * the correct emission-ordered event. Missing sequences fall back to array
+ * position (old runs), exactly like the query engine's assignSequences.
+ */
+export function buildTimelinePayload(
+  startTimeMs: number,
+  events: readonly GhostGlassEvent[],
+): { startTimeMs: number; endTimeMs: number; timestamps: number[]; timeOrder: number[] } {
+  const timestamps = events.map((e) => e.timestamp).sort((a, b) => a - b);
+  const timeOrder = events.map((_, i) => i);
+  timeOrder.sort((a, b) => {
+    const ea = events[a] as GhostGlassEvent;
+    const eb = events[b] as GhostGlassEvent;
+    return (
+      ea.timestamp - eb.timestamp || (ea.sequence ?? a + 1) - (eb.sequence ?? b + 1)
+    );
+  });
+  return {
+    startTimeMs,
+    endTimeMs: timestamps.length > 0 ? (timestamps[timestamps.length - 1] as number) : startTimeMs,
+    timestamps,
+    timeOrder,
+  };
+}
+
 export interface EventFilter {
   /** Null = all kinds. */
   kinds: Set<GhostGlassEventType> | null;

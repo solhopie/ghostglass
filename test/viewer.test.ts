@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { get } from "node:http";
 import { ViewerServer } from "../src/viewer/server.js";
 import { buildGraphFromEvents } from "../src/viewer/indexer.js";
-import { eventIndexAt, filterEvents, describeEvent } from "../src/viewer/replay.js";
+import { eventIndexAt, eventIndexAtOrdered, buildTimelinePayload, filterEvents, describeEvent } from "../src/viewer/replay.js";
 import type { EventFilter } from "../src/viewer/replay.js";
 import type { GhostGlassEvent } from "../src/events/types.js";
 
@@ -339,6 +339,33 @@ describe("viewer backend", () => {
     assert.equal(eventIndexAt(ts, 40), 3);
     assert.equal(eventIndexAt(ts, 1000), 3);
     assert.equal(eventIndexAt([], 50), -1);
+  });
+
+  it("eventIndexAtOrdered maps time positions to emission-ordered events", () => {
+    // Emission order: A(100), B(300), C(200, reconstructed: emitted late,
+    // timestamp early). timeOrder must resolve t=250 to C (index 2), not B.
+    const events: Parameters<typeof eventIndexAtOrdered>[0] = [
+      { timestamp: 100, sequence: 1 },
+      { timestamp: 300, sequence: 2 },
+      { timestamp: 200, sequence: 3 },
+    ] as unknown as Parameters<typeof eventIndexAtOrdered>[0];
+    const payload = buildTimelinePayload(0, events);
+    assert.deepEqual(payload.timestamps, [100, 200, 300]);
+    assert.deepEqual(payload.timeOrder, [0, 2, 1]);
+    assert.equal(eventIndexAtOrdered(events, payload.timeOrder, 50), -1);
+    assert.equal(eventIndexAtOrdered(events, payload.timeOrder, 100), 0);
+    assert.equal(eventIndexAtOrdered(events, payload.timeOrder, 250), 2);
+    assert.equal(eventIndexAtOrdered(events, payload.timeOrder, 300), 1);
+    assert.equal(eventIndexAtOrdered(events, payload.timeOrder, 9999), 1);
+  });
+
+  it("buildTimelinePayload falls back to array order for old runs without sequences", () => {
+    const events = [{ timestamp: 300 }, { timestamp: 100 }] as unknown as Parameters<
+      typeof eventIndexAtOrdered
+    >[0];
+    const payload = buildTimelinePayload(0, events);
+    assert.deepEqual(payload.timeOrder, [1, 0]);
+    assert.equal(eventIndexAtOrdered(events, payload.timeOrder, 150), 1);
   });
 
   it("filterEvents filters by kind, action, and search text", () => {
