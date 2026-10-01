@@ -170,6 +170,49 @@ ghostglass watch -- <command>
 A finished live run is a normal GhostGlass run: replay it, diff it
 against another run, or export a portable report — no extra steps.
 
+## Behavior Highlights
+
+GhostGlass automatically surfaces notable behavior patterns from your trace
+— no AI, no external lookups, no judgment. Just deterministic, rule-based
+observations about what the trace actually contains.
+
+```sh
+ghostglass highlights latest
+```
+
+**What it detects:**
+- **High file activity** — 500+ filesystem events by one process in 3 seconds
+- **High process activity** — 15+ child spawns in 2 seconds
+- **High network activity** — 20+ connections in 5 seconds
+- **High delete activity** — 50+ deletes in 3 seconds
+- **Outside working directory** — files touched outside the traced command's directory, grouped by directory
+- **Create then execute** — a file created and then executed (explicit create + exec)
+- **Rapid file churn** — 25+ writes to the same file in 5 seconds
+
+**Important:** Highlights are **not** malware or security verdicts. They describe
+observed behavior patterns (e.g., "600 file writes in 2 seconds") without
+assessing intent, risk, or safety. A build tool compiling code and malware
+encrypting files can both trigger "high file activity" — the highlight
+describes the pattern, not the purpose.
+
+Highlights appear in:
+- The `ghostglass highlights` CLI command (text or `--json`)
+- The viewer timeline (markers), highlight panel (filterable list), and graph (badges)
+- Live Glass (streamed incrementally via SSE as they're detected)
+- Portable HTML/JSON exports (redacted before generation, like all export content)
+- Run diffs (per-run counts and lists)
+
+Configure thresholds in `.ghostglassrc.json`:
+```json
+{
+  "highlights": {
+    "rules": {
+      "high-file-activity": { "enabled": true, "events": 500, "windowMs": 3000 }
+    }
+  }
+}
+```
+
 ## Compare Runs
 
 ```sh

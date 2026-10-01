@@ -25,6 +25,7 @@ export interface RunJsonExport extends JsonExportEnvelope {
   metadata: RunExportModel["metadata"];
   summary: RunExportModel["summary"];
   events: RunExportModel["events"];
+  highlights: RunExportModel["highlights"];
 }
 
 export interface DiffJsonExport extends JsonExportEnvelope {
@@ -59,6 +60,7 @@ export async function buildRunJsonExport(
     metadata: model.metadata,
     summary: model.summary,
     events: model.events,
+    highlights: model.highlights,
   };
 }
 

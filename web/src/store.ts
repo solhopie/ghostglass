@@ -7,6 +7,9 @@ import type {
   ApiGraph,
   GhostGlassEvent,
   GraphNode,
+  Highlight,
+  HighlightCategory,
+  HighlightSeverity,
   RunMetadata,
   RunSummary,
 } from "./types.js";
@@ -15,9 +18,15 @@ import { eventIndexAt } from "./format.js";
 export type Selection =
   | { kind: "node"; nodeId: string }
   | { kind: "event"; index: number }
+  | { kind: "highlight"; highlightId: string }
   | null;
 
-export type Topic = "data" | "events" | "replay" | "selection" | "filters" | "graph";
+export type Topic = "data" | "events" | "replay" | "selection" | "filters" | "graph" | "highlights";
+
+export interface HighlightFilters {
+  category: "all" | HighlightCategory;
+  severity: "all" | HighlightSeverity;
+}
 
 export class Store {
   readonly runId: string;
@@ -47,6 +56,11 @@ export class Store {
   /** Node ids to visually emphasize (event click → related nodes). */
   spotlight: string[] = [];
   follow = true;
+
+  // highlights
+  highlights: Highlight[] = [];
+  highlightFilters: HighlightFilters = { category: "all", severity: "all" };
+  showHighlights = true;
   /**
    * Live mode only: while true the UI reduces expensive animation
    * (no node pulses, slower graph emits). Saved runs never set this.
@@ -214,5 +228,89 @@ export class Store {
     this.selection = { kind: "event", index };
     this.emit("replay");
     this.emit("selection");
+  }
+
+  setHighlights(highlights: Highlight[]): void {
+    this.highlights = [...highlights].sort((a, b) => a.startTimestamp - b.startTimestamp);
+    this.emit("highlights");
+  }
+
+  appendHighlights(highlights: Highlight[]): void {
+    if (highlights.length === 0) return;
+    const seen = new Set(this.highlights.map((h) => h.id));
+    for (const h of highlights) {
+      if (!seen.has(h.id)) {
+        seen.add(h.id);
+        this.highlights.push(h);
+      }
+    }
+    this.highlights.sort((a, b) => a.startTimestamp - b.startTimestamp);
+    this.emit("highlights");
+  }
+
+  setHighlightFilters(f: HighlightFilters): void {
+    this.highlightFilters = f;
+    this.emit("highlights");
+  }
+
+  setShowHighlights(show: boolean): void {
+    this.showHighlights = show;
+    this.emit("highlights");
+    this.emit("graph");
+  }
+
+  filteredHighlights(): Highlight[] {
+    const f = this.highlightFilters;
+    return this.highlights.filter(
+      (h) =>
+        (f.category === "all" || highlightCategory(h) === f.category) &&
+        (f.severity === "all" || h.severity === f.severity),
+    );
+  }
+
+  /** Select a highlight: seek to it, spotlight related graph nodes, open inspector. */
+  selectHighlight(id: string): void {
+    const h = this.highlights.find((x) => x.id === id);
+    if (!h) return;
+    this.pause();
+    this.tMs = Math.max(0, Math.min(this.durationMs, h.startTimestamp - this.startTimeMs));
+    this.spotlight = this.nodeIdsForHighlight(h);
+    this.selection = { kind: "highlight", highlightId: id };
+    this.emit("replay");
+    this.emit("selection");
+    this.emit("highlights");
+  }
+
+  /** Graph node ids related to a highlight (process + file/network from related events). */
+  nodeIdsForHighlight(h: Highlight): string[] {
+    const ids = new Set<string>();
+    if (h.pid !== undefined) {
+      const p = `p:${h.pid}`;
+      if (this.nodeById.has(p)) ids.add(p);
+    }
+    const byId = new Map(this.events.map((e) => [e.id, e]));
+    for (const eid of h.relatedEventIds.slice(0, 50)) {
+      const e = byId.get(eid);
+      if (!e) continue;
+      for (const nid of this.nodeIdsForEvent(e)) ids.add(nid);
+    }
+    return [...ids];
+  }
+}
+
+/** Category derived from rule (mirrors backend HIGHLIGHT_RULE_CATEGORY). */
+export function highlightCategory(h: Highlight): HighlightCategory {
+  switch (h.rule) {
+    case "high-file-activity":
+    case "high-delete-activity":
+    case "rapid-file-churn":
+      return "file";
+    case "high-process-activity":
+      return "process";
+    case "high-network-activity":
+      return "network";
+    case "outside-working-directory":
+    case "create-then-execute":
+      return "path";
   }
 }

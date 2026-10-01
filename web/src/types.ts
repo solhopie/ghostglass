@@ -115,6 +115,36 @@ export interface ApiTimeline {
 }
 
 /**
+ * Behavior highlight shapes. Mirror of src/highlights/types.ts; highlights
+ * describe observed behavior — never security verdicts.
+ */
+export type HighlightRule =
+  | "high-file-activity"
+  | "high-process-activity"
+  | "high-network-activity"
+  | "high-delete-activity"
+  | "outside-working-directory"
+  | "create-then-execute"
+  | "rapid-file-churn";
+
+export type HighlightSeverity = "info" | "notice" | "high";
+export type HighlightCategory = "file" | "process" | "network" | "path";
+
+export interface Highlight {
+  id: string;
+  runId: string;
+  rule: HighlightRule;
+  severity: HighlightSeverity;
+  title: string;
+  explanation: string;
+  startTimestamp: number;
+  endTimestamp?: number;
+  pid?: number;
+  relatedEventIds: string[];
+  metadata: Record<string, unknown>;
+}
+
+/**
  * Diff API shapes. Mirror of src/diff/types.ts served by
  * GET /api/diff/<a>/<b>; self-contained so web/dist stays standalone.
  */
@@ -281,4 +311,14 @@ export interface RunDiff {
   graph: DiffGraph;
   stream: DiffStreamItem[];
   streamTruncated: boolean;
+  highlightsA: HighlightSummary[];
+  highlightsB: HighlightSummary[];
+}
+
+export interface HighlightSummary {
+  id: string;
+  rule: string;
+  severity: "info" | "notice" | "high";
+  title: string;
+  startTimestamp: number;
 }

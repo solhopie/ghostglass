@@ -12,6 +12,7 @@ import type {
   ApiRunListItem,
   ApiTimeline,
   GhostGlassEvent,
+  Highlight,
   RunDiff,
   RunMetadata,
   RunSummary,
@@ -22,6 +23,7 @@ interface RunPayload {
   graph: ApiGraph;
   timeline: ApiTimeline;
   events: GhostGlassEvent[];
+  highlights: Highlight[];
 }
 
 interface DiffPayload {
@@ -72,6 +74,7 @@ function load(): void {
       exact.set(`/api/runs/${enc}`, d.detail);
       exact.set(`/api/runs/${enc}/graph`, d.graph);
       exact.set(`/api/runs/${enc}/timeline`, d.timeline);
+      exact.set(`/api/runs/${enc}/highlights`, { highlights: d.highlights ?? [] });
       runEvents = { runId, events: d.events };
     } else {
       const d = env.data as DiffPayload;

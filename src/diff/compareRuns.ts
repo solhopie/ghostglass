@@ -20,6 +20,9 @@ import { fileFingerprint, networkFingerprint } from "./fingerprints.js";
 import { compareFiles, indexRunFiles } from "./compareFiles.js";
 import { compareNetwork, indexRunNetwork } from "./compareNetwork.js";
 import { compareProcesses, indexRunProcesses } from "./compareProcesses.js";
+import { detectHighlights } from "../highlights/engine.js";
+import { defaultHighlightConfig } from "../highlights/config.js";
+import type { Highlight } from "../highlights/types.js";
 import type {
   DiffGraph,
   DiffGraphEdge,
@@ -31,6 +34,7 @@ import type {
   ProcessDiffEntity,
   RunDiff,
   SummaryDiff,
+  HighlightSummary,
 } from "./types.js";
 
 export interface RunData {
@@ -460,5 +464,28 @@ export function compareRuns(a: RunData, b: RunData): RunDiff {
     graph,
     stream: allItems.slice(0, MAX_DIFF_STREAM_ITEMS),
     streamTruncated,
+    highlightsA: summarizeHighlights(a),
+    highlightsB: summarizeHighlights(b),
   };
+}
+
+/**
+ * Independent per-run highlight list for diff display. No cross-run
+ * comparison or verdict — just each run's highlights, computed with the
+ * default configuration.
+ */
+function summarizeHighlights(run: RunData): HighlightSummary[] {
+  const config = defaultHighlightConfig();
+  const highlights = detectHighlights(run.events, {
+    runId: run.metadata.runId,
+    workingDirectory: run.metadata.workingDirectory,
+    config,
+  });
+  return highlights.map((h: Highlight) => ({
+    id: h.id,
+    rule: h.rule,
+    severity: h.severity,
+    title: h.title,
+    startTimestamp: h.startTimestamp,
+  }));
 }

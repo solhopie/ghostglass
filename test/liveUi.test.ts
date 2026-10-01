@@ -24,6 +24,7 @@ import type {
   LiveStatusPayload,
   LiveSubscriber,
 } from "../src/live/liveSession.js";
+import type { Highlight } from "../src/highlights/types.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", ".."); // dist/test -> repo root
@@ -700,6 +701,9 @@ describe("live SSE endpoint", () => {
       sub.onStatus(this.getStatus());
       return () => undefined;
     }
+    getHighlights(): Highlight[] {
+      return [];
+    }
   }
 
   before(async () => {
@@ -848,6 +852,9 @@ describe("live SSE backpressure", () => {
         const i = liveSubs.indexOf(sub);
         if (i >= 0) liveSubs.splice(i, 1);
       };
+    }
+    getHighlights(): Highlight[] {
+      return [];
     }
   }
 

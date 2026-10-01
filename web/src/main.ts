@@ -4,9 +4,10 @@
  * /runs/<id> boots the replay for one run. / shows a run picker.
  * Everything is local: same-origin API, no external requests, no telemetry.
  */
-import { getDiff, getEventsPage, getGraph, getRunDetail, getRuns, getTimeline } from "./api.js";
+import { getDiff, getEventsPage, getGraph, getHighlights, getRunDetail, getRuns, getTimeline } from "./api.js";
 import { el, text } from "./format.js";
 import { Store } from "./store.js";
+import type { Highlight } from "./types.js";
 import { DiffStore } from "./diffStore.js";
 import { DiffGraphView } from "./diffGraphView.js";
 import { DiffHeaderView } from "./diffHeaderView.js";
@@ -15,6 +16,7 @@ import { DiffStreamView } from "./diffStreamView.js";
 import { DiffTimelineView } from "./diffTimelineView.js";
 import { GraphView } from "./graphView.js";
 import { HeaderView } from "./headerView.js";
+import { HighlightPanel } from "./highlightPanel.js";
 import { InspectorView } from "./inspectorView.js";
 import { LiveHeaderView } from "./liveHeaderView.js";
 import { LiveStore } from "./liveStore.js";
@@ -106,25 +108,32 @@ async function bootRun(runId: string): Promise<void> {
   const streamView = new StreamView(streamHost, store);
   const inspectorView = new InspectorView(inspectorHost, store);
   const timelineView = new TimelineView(footer, store);
+  const highlightHost = el("div", "gg-highlights");
+  side.appendChild(highlightHost);
+  const highlightPanel = new HighlightPanel(highlightHost, store);
   void graphView;
   void inspectorView;
 
   headerView.render();
   streamView.render();
   timelineView.render();
+  highlightPanel.render();
 
   try {
-    const [detail, graph, timeline] = await Promise.all([
+    const [detail, graph, timeline, hl] = await Promise.all([
       getRunDetail(runId),
       getGraph(runId),
       getTimeline(runId),
+      getHighlights(runId).catch(() => ({ highlights: [] as Highlight[] })),
     ]);
     store.setRunData(detail.metadata, detail.summary, graph);
     store.setTimeline(timeline.startTimeMs, timeline.timestamps);
+    store.setHighlights(hl.highlights);
     headerView.render();
     graphView.render();
     inspectorView.render();
     timelineView.render();
+    highlightPanel.render();
     // Stream events in the background; replay works off the timeline immediately.
     await streamView.loadAll(runId, (offset, limit) => getEventsPage(runId, offset, limit));
   } catch (err) {
@@ -163,6 +172,9 @@ async function bootLive(runId: string): Promise<void> {
   const streamView = new StreamView(streamHost, store);
   const inspectorView = new InspectorView(inspectorHost, store);
   const timelineView = new TimelineView(footer, store);
+  const highlightHost = el("div", "gg-highlights");
+  side.appendChild(highlightHost);
+  const highlightPanel = new HighlightPanel(highlightHost, store);
   void graphView;
   void streamView;
   void inspectorView;
@@ -171,6 +183,7 @@ async function bootLive(runId: string): Promise<void> {
   headerView.render();
   streamView.render();
   timelineView.render();
+  highlightPanel.render();
 
   try {
     await store.connect();

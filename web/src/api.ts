@@ -5,6 +5,7 @@ import type {
   ApiRunListItem,
   ApiTimeline,
   GhostGlassEvent,
+  Highlight,
   RunDiff,
   RunMetadata,
   RunSummary,
@@ -72,4 +73,8 @@ export interface LiveStatusPayload {
 
 export function getLiveStatus(runId: string): Promise<LiveStatusPayload> {
   return getJson(`/api/live/${encodeURIComponent(runId)}/status`);
+}
+
+export function getHighlights(runId: string): Promise<{ runId: string; highlights: Highlight[] }> {
+  return getJson(`/api/runs/${encodeURIComponent(runId)}/highlights`);
 }

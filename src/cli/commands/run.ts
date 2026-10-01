@@ -10,8 +10,11 @@ import {
   type RunMetadata,
 } from "../../storage/runStore.js";
 import { buildSummary } from "../../summary/summarize.js";
-import { formatSummaryText } from "../format.js";
+import { formatSummaryText, formatHighlightsText } from "../format.js";
 import { readPackageVersion } from "../version.js";
+import { writeHighlights } from "../../highlights/storage.js";
+import { loadHighlightConfig } from "../../highlights/config.js";
+import { detectHighlights } from "../../highlights/engine.js";
 
 const SIGNAL_EXIT_OFFSET = 128;
 const SIGNAL_NUMBERS: Record<string, number> = {
@@ -109,6 +112,7 @@ export async function runCommand(
     signal,
     interrupted,
     backend: tracer.name,
+    workingDirectory: options.cwd,
     eventCount: parsed.events.length,
     parseStats: { ...parsed.stats },
   };
@@ -120,8 +124,24 @@ export async function runCommand(
   await writeJsonFile(join(runDir, "summary.json"), summary);
   await writeJsonFile(join(runDir, "metadata.json"), metadata);
 
+  // Behavior highlights: computed from the normalized events, cached to
+  // highlights.json (regeneratable — events.jsonl stays the source of truth).
+  const { config: hlConfig, warnings: hlWarnings } = await loadHighlightConfig(options.cwd);
+  for (const w of hlWarnings) console.log(chalk.yellow(`Warning: ${w}`));
+  const highlights = detectHighlights(parsed.events, {
+    runId,
+    workingDirectory: options.cwd,
+    config: hlConfig,
+  });
+  await writeHighlights(runDir, runId, highlights, hlConfig);
+
   console.log("");
   console.log(formatSummaryText(metadata, summary));
+  const hlText = formatHighlightsText(highlights, runId);
+  if (hlText) {
+    console.log("");
+    console.log(hlText);
+  }
 
   // Preserve the target command's exit semantics.
   if (signal !== null && signal !== undefined) {

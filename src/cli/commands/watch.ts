@@ -10,8 +10,9 @@ import {
 import type { RunSummary } from "../../summary/summarize.js";
 import { LiveSession } from "../../live/liveSession.js";
 import { RUN_ID_RE, VIEWER_HOST, ViewerServer } from "../../viewer/server.js";
-import { formatDuration, formatSummaryText } from "../format.js";
+import { formatDuration, formatHighlightsText, formatSummaryText } from "../format.js";
 import { openBrowser } from "./open.js";
+import { loadHighlightConfig } from "../../highlights/config.js";
 
 const SIGNAL_EXIT_OFFSET = 128;
 const SIGNAL_NUMBERS: Record<string, number> = {
@@ -85,6 +86,9 @@ export async function watchCommand(
   const commandLine = commandLineString(command);
   const startTimeMs = Date.now();
 
+  const { config: hlConfig, warnings: hlWarnings } = await loadHighlightConfig(options.cwd);
+  for (const w of hlWarnings) console.log(chalk.yellow(`Warning: ${w}`));
+
   const session = new LiveSession({
     runId,
     runDir,
@@ -92,6 +96,8 @@ export async function watchCommand(
     commandLine,
     backendName: tracer.name,
     startTimeMs,
+    workingDirectory: options.cwd,
+    highlightConfig: hlConfig,
   });
 
   // Start the viewer first so the browser can connect before events flow.
@@ -184,9 +190,15 @@ export async function watchCommand(
   const metadata = await session.finalize(result);
   server.unregisterLiveSession(runId);
   const summary = await readJsonFile<RunSummary>(join(runDir, "summary.json"));
+  const highlights = session.getHighlights();
 
   console.log("");
   console.log(formatSummaryText(metadata, summary));
+  const hlText = formatHighlightsText(highlights, runId);
+  if (hlText) {
+    console.log("");
+    console.log(hlText);
+  }
   console.log(chalk.dim(`Replay: ghostglass open ${runId}`));
 
   // Preserve the target command's exit semantics.

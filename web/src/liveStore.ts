@@ -14,7 +14,7 @@
 import { getEventsPage, getLiveStatus, type LiveStatusPayload } from "./api.js";
 import { LiveGraph, type LiveCounters } from "./liveGraph.js";
 import { Store } from "./store.js";
-import type { GhostGlassEvent } from "./types.js";
+import type { GhostGlassEvent, Highlight } from "./types.js";
 
 export type LiveStatus = "running" | "complete" | "interrupted" | "exited";
 
@@ -104,6 +104,16 @@ export class LiveStore extends Store {
         this.applyStatus(JSON.parse((ev as MessageEvent).data as string) as LiveStatusPayload);
       } catch {
         // ignore
+      }
+    });
+    source.addEventListener("highlights", (ev) => {
+      try {
+        const data = JSON.parse((ev as MessageEvent).data as string) as {
+          highlights?: Highlight[];
+        };
+        if (Array.isArray(data.highlights)) this.appendHighlights(data.highlights);
+      } catch {
+        // malformed highlight batch: skip; polling covers the gap
       }
     });
     // "ping" is keep-alive only. "error" needs no handler: EventSource

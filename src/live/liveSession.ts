@@ -9,6 +9,14 @@ import {
 } from "../storage/runStore.js";
 import { buildSummary } from "../summary/summarize.js";
 import { readPackageVersion } from "../cli/version.js";
+import type { Highlight } from "../highlights/types.js";
+import {
+  createLiveDetector,
+  type LiveDetector,
+} from "../highlights/engine.js";
+import type { ResolvedHighlightConfig } from "../highlights/types.js";
+import { writeHighlights } from "../highlights/storage.js";
+import { defaultHighlightConfig } from "../highlights/config.js";
 
 /**
  * Live run status, shown prominently in the viewer.
@@ -38,6 +46,8 @@ export interface LiveStatusPayload {
 export interface LiveSubscriber {
   onEvents(events: GhostGlassEvent[]): void;
   onStatus(status: LiveStatusPayload): void;
+  /** Live behavior highlights, emitted as soon as a rule fires. Optional. */
+  onHighlights?(highlights: Highlight[]): void;
 }
 
 /**
@@ -58,6 +68,8 @@ export interface LiveSessionLike {
    * immediately receives the current status.
    */
   subscribe(sub: LiveSubscriber, sinceId?: string | null): () => void;
+  /** Highlights detected so far in this live session. */
+  getHighlights(): Highlight[];
 }
 
 /** Broadcast tick: batches live events to SSE subscribers. */
@@ -90,6 +102,11 @@ export class LiveSession implements LiveSessionLike {
   private finalized = false;
   /** True once any exec event arrived (the command actually started). */
   private sawExecEvent = false;
+  /** Incremental behavior-highlight detector (live highlights). */
+  private highlightDetector: LiveDetector;
+  private highlights: Highlight[] = [];
+  private readonly workingDirectory: string | undefined;
+  private readonly highlightConfig: ResolvedHighlightConfig;
 
   constructor(opts: {
     runId: string;
@@ -98,6 +115,8 @@ export class LiveSession implements LiveSessionLike {
     commandLine: string;
     backendName: string;
     startTimeMs: number;
+    workingDirectory?: string;
+    highlightConfig?: ResolvedHighlightConfig;
   }) {
     this.runId = opts.runId;
     this.runDir = opts.runDir;
@@ -105,6 +124,8 @@ export class LiveSession implements LiveSessionLike {
     this.commandLine = opts.commandLine;
     this.backendName = opts.backendName;
     this.startTimeMs = opts.startTimeMs;
+    this.workingDirectory = opts.workingDirectory;
+    this.highlightConfig = opts.highlightConfig ?? defaultHighlightConfig();
     this.eventsFile = createWriteStream(join(opts.runDir, "events.jsonl"), {
       encoding: "utf8",
     });
@@ -112,14 +133,25 @@ export class LiveSession implements LiveSessionLike {
       // Persistence trouble must not kill the traced command; the
       // in-memory stream keeps flowing to the viewer.
     });
+    // Live highlight detection: the detector is incremental — each event is
+    // O(1) amortized per rule, highlights broadcast as soon as they fire.
+    this.highlightDetector = createLiveDetector(
+      {
+        runId: opts.runId,
+        workingDirectory: opts.workingDirectory,
+        config: this.highlightConfig,
+      },
+      (h) => this.broadcastHighlight(h),
+    );
   }
 
-  /** Ingest one normalized event: persist, buffer for broadcast. */
+  /** Ingest one normalized event: persist, buffer for broadcast, detect highlights. */
   ingest(event: GhostGlassEvent): void {
     this.events.push(event);
     if (event.action === "exec") this.sawExecEvent = true;
     this.eventsFile.write(JSON.stringify(event) + "\n");
     this.pending.push(event);
+    this.highlightDetector.ingest(event);
     this.ensureTimer();
   }
 
@@ -131,6 +163,7 @@ export class LiveSession implements LiveSessionLike {
       this.events.push(e);
       if (e.action === "exec") this.sawExecEvent = true;
       json += JSON.stringify(e) + "\n";
+      this.highlightDetector.ingest(e);
     }
     this.eventsFile.write(json);
     this.pending.push(...events);
@@ -144,6 +177,23 @@ export class LiveSession implements LiveSessionLike {
 
   get eventCount(): number {
     return this.events.length;
+  }
+
+  /** Highlights detected so far (live or finalized). */
+  getHighlights(): Highlight[] {
+    return [...this.highlights];
+  }
+
+  /** Broadcast one newly-detected highlight to subscribers immediately. */
+  private broadcastHighlight(h: Highlight): void {
+    this.highlights.push(h);
+    for (const sub of [...this.subscribers]) {
+      try {
+        sub.onHighlights?.([h]);
+      } catch {
+        this.subscribers.delete(sub);
+      }
+    }
   }
 
   getStatus(): LiveStatusPayload {
@@ -188,6 +238,10 @@ export class LiveSession implements LiveSessionLike {
     const missed = this.eventsAfter(sinceId ?? null).events;
     if (missed.length > 0) {
       sub.onEvents(missed);
+    }
+    // A reconnecting subscriber also gets highlights detected so far.
+    if (this.highlights.length > 0) {
+      sub.onHighlights?.([...this.highlights]);
     }
     // Immediately inform the new subscriber of the current status so a
     // reconnecting browser never shows a stale pill.
@@ -274,6 +328,7 @@ export class LiveSession implements LiveSessionLike {
       signal: this.signal,
       interrupted: this.interrupted,
       backend: this.backendName,
+      workingDirectory: this.workingDirectory,
       eventCount: this.events.length,
       parseStats: this.parseStats ?? { totalLines: 0, events: 0, skipped: 0, malformed: 0 },
     };
@@ -283,6 +338,17 @@ export class LiveSession implements LiveSessionLike {
     // for open/diff/export.
     await writeJsonFile(join(this.runDir, "summary.json"), summary);
     await writeJsonFile(join(this.runDir, "metadata.json"), metadata);
+
+    // Persist the live-detected highlights (same engine as batch, so the
+    // saved run and the live view agree).
+    const finalHighlights = this.highlightDetector.finish();
+    // finish() returns sorted; keep the broadcast order stable by id set.
+    const byId = new Map(finalHighlights.map((h) => [h.id, h]));
+    const ordered = this.highlights.filter((h) => byId.has(h.id));
+    for (const h of finalHighlights) {
+      if (!ordered.some((o) => o.id === h.id)) ordered.push(h);
+    }
+    await writeHighlights(this.runDir, this.runId, ordered, this.highlightConfig);
 
     const payload = this.getStatus();
     for (const sub of [...this.subscribers]) {

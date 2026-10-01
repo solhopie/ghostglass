@@ -52,7 +52,23 @@ export class GraphView {
     store.on("data", () => this.render());
     store.on("graph", () => this.render());
     store.on("replay", () => this.updateReplay());
-    store.on("selection", () => this.updateSelection());
+    store.on("selection", () => {
+      this.updateSelection();
+      // Pulse the related nodes when a highlight is selected.
+      const sel = store.selection;
+      if (sel?.kind === "highlight" && store.showHighlights) {
+        const h = store.highlights.find((x) => x.id === sel.highlightId);
+        if (h) this.pulseNodes(store.nodeIdsForHighlight(h));
+      }
+    });
+    store.on("highlights", () => {
+      this.updateHighlightBadges();
+      // Pulse newly arrived highlights' nodes (live mode).
+      const latest = store.highlights[store.highlights.length - 1];
+      if (latest && store.showHighlights) {
+        this.pulseNodes(store.nodeIdsForHighlight(latest));
+      }
+    });
   }
 
   render(): void {
@@ -108,6 +124,7 @@ export class GraphView {
     }
     this.updateReplay();
     this.updateSelection();
+    this.updateHighlightBadges();
 
     if (graph.truncatedFiles > 0) {
       const note = document.createElement("div");
@@ -333,6 +350,7 @@ export class GraphView {
     mkToggle("Network", this.store.showNetwork, (v) =>
       this.store.setGraphFilters(this.store.showFiles, v),
     );
+    mkToggle("Highlights", this.store.showHighlights, (v) => this.store.setShowHighlights(v));
 
     const legend = document.createElement("span");
     legend.className = "graph-legend";
@@ -500,6 +518,38 @@ export class GraphView {
     for (const [nid, g] of this.nodeEls) {
       g.classList.toggle("selected", sel?.kind === "node" && sel.nodeId === nid);
       g.classList.toggle("spotlight", spot.has(nid));
+    }
+  }
+
+  /** Badge nodes involved in highlights; called on highlights/data/graph topics. */
+  updateHighlightBadges(): void {
+    const s = this.store;
+    if (!s.showHighlights) {
+      for (const [, g] of this.nodeEls) {
+        g.classList.remove("hl-badge");
+        const b = g.querySelector(".hl-dot");
+        b?.remove();
+      }
+      return;
+    }
+    const involved = new Set<string>();
+    for (const h of s.filteredHighlights()) {
+      for (const nid of s.nodeIdsForHighlight(h)) involved.add(nid);
+    }
+    for (const [nid, g] of this.nodeEls) {
+      const has = involved.has(nid);
+      g.classList.toggle("hl-badge", has);
+      let dot = g.querySelector(".hl-dot");
+      if (has && !dot) {
+        dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        dot.setAttribute("class", "hl-dot");
+        dot.setAttribute("r", "6");
+        dot.setAttribute("cx", String(232 - 6));
+        dot.setAttribute("cy", "-6");
+        g.appendChild(dot);
+      } else if (!has && dot) {
+        dot.remove();
+      }
     }
   }
 

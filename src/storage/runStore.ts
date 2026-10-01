@@ -24,6 +24,8 @@ export interface RunMetadata {
   interrupted: boolean;
   /** Tracing backend used, e.g. "strace". */
   backend: string;
+  /** Working directory the traced command ran in (for outside-cwd highlights). */
+  workingDirectory?: string | undefined;
   eventCount: number;
   /** Parser counters: lines seen / events produced / skipped / malformed. */
   parseStats: { totalLines: number; events: number; skipped: number; malformed: number };

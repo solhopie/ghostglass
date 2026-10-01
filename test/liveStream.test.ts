@@ -495,6 +495,9 @@ function stubSession(
     getStatus() {
       return liveStatus;
     },
+    getHighlights() {
+      return [];
+    },
   };
   return {
     like,

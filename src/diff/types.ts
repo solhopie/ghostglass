@@ -196,4 +196,16 @@ export interface RunDiff {
   stream: DiffStreamItem[];
   /** True when the stream was capped (see MAX_DIFF_STREAM_ITEMS). */
   streamTruncated: boolean;
+  /** Independent highlight lists per run — no cross-run comparison. */
+  highlightsA: HighlightSummary[];
+  highlightsB: HighlightSummary[];
+}
+
+/** Compact highlight entry for diff display (no verdict, just the list). */
+export interface HighlightSummary {
+  id: string;
+  rule: string;
+  severity: "info" | "notice" | "high";
+  title: string;
+  startTimestamp: number;
 }

@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import type { RunMetadata, RunListEntry } from "../storage/runStore.js";
 import type { RunSummary } from "../summary/summarize.js";
+import type { Highlight } from "../highlights/types.js";
 
 export function formatDuration(durationMs: number): string {
   if (durationMs < 1000) return `${Math.round(durationMs)}ms`;
@@ -95,5 +96,64 @@ export function formatRunsTable(entries: RunListEntry[]): string {
         `${padEnd(formatDuration(m.durationMs), 10)}  ${formatExit(m)}`,
     );
   }
+  return lines.join("\n");
+}
+
+/**
+ * Compact one-line summary of a highlight for terminal display.
+ * Never uses verdict language — describes observed behavior only.
+ */
+export function formatHighlightLine(h: Highlight): string {
+  const m = h.metadata as Record<string, unknown>;
+  let detail = "";
+  switch (h.rule) {
+    case "high-file-activity":
+      detail = `${(m.eventCount as number)?.toLocaleString()} events / ${m.windowSecs}s`;
+      break;
+    case "high-process-activity":
+      detail = `${m.spawnCount} child processes / ${m.windowSecs}s`;
+      break;
+    case "high-network-activity":
+      detail = `${m.attemptCount} attempts / ${m.windowSecs}s`;
+      break;
+    case "high-delete-activity":
+      detail = `${m.deleteCount} deleted / ${m.windowSecs}s`;
+      break;
+    case "outside-working-directory":
+      detail = `${m.fileCount ?? 0} files under ${shortenHome(String(m.directory ?? ""))}`;
+      break;
+    case "create-then-execute":
+      detail = `${shortenHome(String(m.path ?? ""))} (${m.delayMs} ms later)`;
+      break;
+    case "rapid-file-churn":
+      detail = `${m.operationCount} ops / ${m.windowSecs}s on ${shortenHome(String(m.path ?? ""))}`;
+      break;
+  }
+  const who = h.pid !== undefined ? `pid ${h.pid}` : "";
+  return `• ${h.title}${who ? ` — ${who}` : ""}${detail ? `\n  ${detail}` : ""}`;
+}
+
+function shortenHome(p: string): string {
+  const home = process.env.HOME;
+  if (home && p.startsWith(home + "/")) return "~" + p.slice(home.length);
+  return p;
+}
+
+/**
+ * Terminal highlight summary shown after `ghostglass run` / `watch`.
+ * Shows the most useful few; points at `ghostglass open` for the full list.
+ * Returns "" when there are no highlights.
+ */
+export function formatHighlightsText(highlights: Highlight[], runId: string): string {
+  if (highlights.length === 0) return "";
+  const lines: string[] = [];
+  lines.push(chalk.bold(`Highlights: ${highlights.length}`));
+  lines.push(chalk.dim("Notable behavior observed — not a security verdict."));
+  const shown = highlights.slice(0, 5);
+  for (const h of shown) lines.push(formatHighlightLine(h));
+  if (highlights.length > shown.length) {
+    lines.push(chalk.dim(`…and ${highlights.length - shown.length} more.`));
+  }
+  lines.push(chalk.dim(`Full list: ghostglass open ${runId}`));
   return lines.join("\n");
 }

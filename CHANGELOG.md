@@ -3,6 +3,37 @@
 All notable changes to GhostGlass are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.0] - Unreleased
+
+Run 6: behavior highlights — automatically surface notable behavior patterns
+from your trace. Deterministic, rule-based, local; no AI, no external lookups.
+
+**Important:** Highlights are not malware/security verdicts. They describe
+observed behavior (e.g., "600 file writes in 2 seconds") without assessing
+intent, risk, or safety.
+
+### Added
+
+- Behavior highlight engine (`src/highlights/`): 7 deterministic rules —
+  `high-file-activity`, `high-process-activity`, `high-network-activity`,
+  `high-delete-activity`, `outside-working-directory`, `create-then-execute`,
+  `rapid-file-churn`. No AI, no reputation APIs, no DNS, no external network.
+- `ghostglass highlights [run-id|latest] [--json]`: CLI command to view
+  highlights for a saved run.
+- Highlights computed on run finalization, stored in `highlights.json`,
+  regeneratable from `events.jsonl` (source of truth).
+- Live Glass: highlights detected incrementally during `watch`, streamed via
+  SSE (`event: highlights`).
+- Viewer: timeline markers, filterable highlight panel, graph badges with
+  toggle, inspector integration, selection/seek.
+- Export: HTML and JSON include highlights; redaction applied before highlight
+  text generation.
+- Diff: per-run highlight counts and lists (independent, no comparison engine).
+- Config: `.ghostglassrc.json` `highlights` section for thresholds and
+  enable/disable per rule.
+- Demo fixture `test/fixtures/highlights-demo.cjs` generating deterministic
+  highlights.
+
 ## [0.5.0] - Unreleased
 
 Run 5: live glass — watch what your command is doing while it is doing it.

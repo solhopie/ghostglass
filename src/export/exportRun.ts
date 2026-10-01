@@ -19,6 +19,9 @@ import type { RunMetadata } from "../storage/runStore.js";
 import type { RunSummary } from "../summary/summarize.js";
 import type { GhostGlassEvent } from "../events/types.js";
 import { redactRunData, type RedactOptions } from "./redact.js";
+import { detectHighlights } from "../highlights/engine.js";
+import { loadHighlightConfig } from "../highlights/config.js";
+import type { Highlight } from "../highlights/types.js";
 
 export interface RunExportModel {
   metadata: RunMetadata;
@@ -26,6 +29,8 @@ export interface RunExportModel {
   graph: ApiGraph;
   timeline: ApiTimeline;
   events: GhostGlassEvent[];
+  /** Highlights computed from the REDACTED events — redaction happens first. */
+  highlights: Highlight[];
 }
 
 /** Build the timeline payload exactly like the live viewer's /timeline route. */
@@ -59,12 +64,21 @@ export async function buildRunExportModel(
     startTimeMs: Date.parse(data.metadata.startTime),
   });
   const timeline = buildTimeline(data.metadata, data.events);
+  // Highlights are computed from the redacted events, so exported highlight
+  // text (paths, executables, explanations) is redaction-safe by construction.
+  const { config } = await loadHighlightConfig(cwd);
+  const highlights = detectHighlights(data.events, {
+    runId,
+    workingDirectory: data.metadata.workingDirectory,
+    config,
+  });
   return {
     metadata: data.metadata,
     summary: data.summary,
     graph,
     timeline,
     events: data.events,
+    highlights,
   };
 }
 

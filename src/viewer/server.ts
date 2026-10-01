@@ -34,6 +34,9 @@ import { compareRuns } from "../diff/compareRuns.js";
 import { loadRunData } from "../diff/loadRuns.js";
 import type { RunDiff } from "../diff/types.js";
 import type { LiveSessionLike, LiveSubscriber } from "../live/liveSession.js";
+import type { Highlight } from "../highlights/types.js";
+import { readHighlights } from "../highlights/storage.js";
+import { loadHighlightConfig } from "../highlights/config.js";
 
 export const DEFAULT_VIEWER_PORT = 7777;
 export const VIEWER_HOST = "127.0.0.1";
@@ -215,6 +218,18 @@ export class ViewerServer {
     return run.graph;
   }
 
+  /**
+   * Highlights for a saved run: read the highlights.json cache, computing
+   * it deterministically from events.jsonl when missing (old runs).
+   */
+  private async getHighlights(
+    runId: string,
+    run: { metadata: RunMetadata; events: GhostGlassEvent[] },
+  ): Promise<Highlight[]> {
+    const { config } = await loadHighlightConfig(this.cwd);
+    return readHighlights(this.runDir(runId), runId, run.metadata, async () => run.events, config);
+  }
+
   private async getDiff(runA: string, runB: string): Promise<RunDiff | null> {
     const key = `${runA}<${runB}`;
     const cached = this.diffCache.get(key);
@@ -328,6 +343,9 @@ export class ViewerServer {
       },
       onStatus: (status) => {
         send("status", null, JSON.stringify(status));
+      },
+      onHighlights: (highlights) => {
+        send("highlights", null, JSON.stringify({ highlights }));
       },
     };
     const unsubscribe = session.subscribe(sub, since);
@@ -464,6 +482,23 @@ export class ViewerServer {
           timestamps,
         };
         this.json(res, 200, timeline);
+        return;
+      }
+      if (suffix === "/highlights") {
+        // Live sessions serve in-memory highlights; saved runs serve the
+        // highlights.json cache (regenerated deterministically on demand).
+        const live = this.liveSessions.get(rawId);
+        if (live) {
+          this.json(res, 200, { runId: rawId, highlights: live.getHighlights() });
+          return;
+        }
+        const run = await this.loadRun(rawId);
+        if (!run) {
+          this.json(res, 404, { error: "run not found" });
+          return;
+        }
+        const highlights = await this.getHighlights(rawId, run);
+        this.json(res, 200, { runId: rawId, highlights });
         return;
       }
       if (suffix === "/events") {

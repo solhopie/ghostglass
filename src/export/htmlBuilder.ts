@@ -165,6 +165,7 @@ export function buildRunExportHtml(
     graph: model.graph,
     timeline: model.timeline,
     events: model.events,
+    highlights: model.highlights,
   };
   return buildExportShell({
     title: `GhostGlass — ${model.metadata.runId} — ${model.metadata.commandLine}`,

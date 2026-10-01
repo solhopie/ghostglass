@@ -3,7 +3,7 @@
  * All trace strings are rendered via textContent — never as HTML.
  */
 import type { Store } from "./store.js";
-import type { GhostGlassEvent, GraphNode } from "./types.js";
+import type { GhostGlassEvent, GraphNode, Highlight } from "./types.js";
 import { describeEvent, el, formatCount, formatDuration, formatOffset, text } from "./format.js";
 
 export class InspectorView {
@@ -41,6 +41,10 @@ export class InspectorView {
     } else if (sel?.kind === "event") {
       const e = this.store.events[sel.index];
       if (e) this.renderEvent(body, e);
+      else this.renderEmpty(body);
+    } else if (sel?.kind === "highlight") {
+      const h = this.store.highlights.find((x) => x.id === sel.highlightId);
+      if (h) this.renderHighlight(body, h);
       else this.renderEmpty(body);
     } else {
       this.renderEmpty(body);
@@ -165,6 +169,38 @@ export class InspectorView {
     const note = el("div", "inspector-note");
     text(note, "Hostnames are never guessed — only the observed IP and port are shown.");
     body.appendChild(note);
+  }
+
+  private renderHighlight(body: HTMLElement, h: Highlight): void {
+    this.heading(body, "highlight", h.title);
+    body.appendChild(this.kv("Severity", `${h.severity} (behavioral magnitude, not risk)`));
+    body.appendChild(this.kv("Rule", h.rule));
+    body.appendChild(this.kv("At", `+${formatOffset(h.startTimestamp - this.store.startTimeMs)}`));
+    if (h.endTimestamp !== undefined) {
+      body.appendChild(this.kv("Window", `${((h.endTimestamp - h.startTimestamp) / 1000).toFixed(1)}s`));
+    }
+    if (h.pid !== undefined) {
+      body.appendChild(this.kv("Process", `${this.store.pidLabel(h.pid)} (PID ${h.pid})`));
+    }
+    const why = el("div", "kv-section");
+    text(why, "Why this highlight exists");
+    body.appendChild(why);
+    const expl = el("div", "inspector-expl");
+    text(expl, h.explanation);
+    body.appendChild(expl);
+    body.appendChild(this.kv("Related events", String(h.relatedEventIds.length)));
+    const meta = h.metadata;
+    const keys = Object.keys(meta).filter((k) => k !== "category");
+    if (keys.length > 0) {
+      const det = el("div", "kv-section");
+      text(det, "Details");
+      body.appendChild(det);
+      for (const k of keys) {
+        const v = meta[k];
+        if (v === undefined || v === null) continue;
+        body.appendChild(this.kv(k, typeof v === "object" ? JSON.stringify(v) : String(v)));
+      }
+    }
   }
 
   private renderEvent(body: HTMLElement, e: GhostGlassEvent): void {

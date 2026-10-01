@@ -5,6 +5,7 @@ import { openCommand } from "./commands/open.js";
 import { diffCommand } from "./commands/diff.js";
 import { exportCommand, exportDiffCommand } from "./commands/export.js";
 import { watchCommand } from "./commands/watch.js";
+import { highlightsCommand } from "./commands/highlights.js";
 import { readPackageVersion } from "./version.js";
 
 export function buildProgram(): Command {
@@ -165,6 +166,15 @@ export function buildProgram(): Command {
       });
     },
   );
+
+  program
+    .command("highlights")
+    .description("Show behavior highlights for a saved trace (observed behavior, not verdicts)")
+    .argument("[run-id]", 'run ID, e.g. gg_20260930_001, or "latest" (default)')
+    .option("--json", "Output highlights as JSON for automation")
+    .action(async (runId: string | undefined, options: { json?: boolean }) => {
+      await highlightsCommand(runId, { cwd: process.cwd(), json: options.json });
+    });
 
   return program;
 }

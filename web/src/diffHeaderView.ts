@@ -4,7 +4,7 @@
  * a larger number is never presented as worse.
  */
 import type { DiffStore } from "./diffStore.js";
-import type { DeltaNumber, SummaryDiff } from "./types.js";
+import type { DeltaNumber, HighlightSummary, SummaryDiff } from "./types.js";
 import { el, formatCount, formatDuration, text } from "./format.js";
 
 function fmtDelta(n: number): string {
@@ -58,7 +58,63 @@ export class DiffHeaderView {
     );
     wrap.appendChild(runs);
     wrap.appendChild(this.summaryTable(diff.summary));
+    wrap.appendChild(
+      this.highlightLists(diff.highlightsA ?? [], diff.highlightsB ?? []),
+    );
     this.host.appendChild(wrap);
+  }
+
+  /** Independent per-run highlight lists — counts plus titles, no verdict. */
+  private highlightLists(
+    a: HighlightSummary[],
+    b: HighlightSummary[],
+  ): HTMLElement {
+    const sec = el("div", "diff-hl");
+    const h = el("h2", "diff-hl-title");
+    text(h, `Behavior highlights — Run A: ${a.length} · Run B: ${b.length}`);
+    sec.appendChild(h);
+    const note = el("div", "diff-hl-note");
+    text(note, "Independent lists per run. Highlights describe observed behavior; they are not a verdict.");
+    sec.appendChild(note);
+    const cols = el("div", "diff-hl-cols");
+    cols.appendChild(this.highlightCol("Run A", a));
+    cols.appendChild(this.highlightCol("Run B", b));
+    sec.appendChild(cols);
+    return sec;
+  }
+
+  private highlightCol(label: string, items: HighlightSummary[]): HTMLElement {
+    const col = el("div", "diff-hl-col");
+    const h = el("div", "diff-hl-colhead");
+    text(h, `${label} (${items.length})`);
+    col.appendChild(h);
+    if (items.length === 0) {
+      const empty = el("div", "diff-hl-empty");
+      text(empty, "No highlights.");
+      col.appendChild(empty);
+      return col;
+    }
+    const ul = document.createElement("ul");
+    ul.className = "diff-hl-list";
+    for (const item of items.slice(0, 50)) {
+      const li = document.createElement("li");
+      li.className = "diff-hl-item";
+      const sev = el("span", `hl-sev hl-sev-${item.severity}`);
+      text(sev, item.severity.toUpperCase());
+      li.appendChild(sev);
+      const t = el("span", "diff-hl-t");
+      text(t, ` ${item.title}`);
+      li.appendChild(t);
+      ul.appendChild(li);
+    }
+    if (items.length > 50) {
+      const more = document.createElement("li");
+      more.className = "diff-hl-more";
+      text(more, `…and ${items.length - 50} more`);
+      ul.appendChild(more);
+    }
+    col.appendChild(ul);
+    return col;
   }
 
   private runCard(

@@ -21,6 +21,7 @@ export class TimelineView {
   ) {
     store.on("events", () => this.rebuildBuckets());
     store.on("replay", () => this.draw());
+    store.on("highlights", () => this.draw());
   }
 
   render(): void {
@@ -62,6 +63,8 @@ export class TimelineView {
     this.canvas = canvas;
 
     canvas.addEventListener("pointerdown", (e) => {
+      // Clicking a highlight marker selects the highlight instead of scrubbing.
+      if (this.clickMarker(e)) return;
       this.scrubbing = true;
       // Synthetic or already-released pointers make setPointerCapture throw;
       // capture is an enhancement, never let it break scrubbing.
@@ -101,6 +104,38 @@ export class TimelineView {
     const rect = canvas.getBoundingClientRect();
     const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     this.store.seek(frac * this.store.durationMs);
+  }
+
+  /** X positions of highlight markers, for hit-testing and drawing. */
+  private markerPositions(w: number): { x: number; id: string; title: string }[] {
+    const s = this.store;
+    if (!s.showHighlights || s.durationMs <= 0) return [];
+    const out: { x: number; id: string; title: string }[] = [];
+    for (const h of s.filteredHighlights()) {
+      const frac = (h.startTimestamp - s.startTimeMs) / s.durationMs;
+      if (frac < 0 || frac > 1) continue;
+      out.push({ x: frac * w, id: h.id, title: h.title });
+    }
+    return out;
+  }
+
+  /** If the pointer is on a highlight marker, select it and return true. */
+  private clickMarker(e: PointerEvent): boolean {
+    const canvas = this.canvas;
+    if (!canvas) return false;
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    // Markers live in the top strip of the track.
+    if (y > 18) return false;
+    for (const m of this.markerPositions(w)) {
+      if (Math.abs(m.x - x) <= 8) {
+        this.store.selectHighlight(m.id);
+        return true;
+      }
+    }
+    return false;
   }
 
   private rebuildBuckets(): void {
@@ -148,6 +183,35 @@ export class TimelineView {
       grad.addColorStop(1, "rgba(167, 139, 250, 0.35)");
       ctx.fillStyle = grad;
       ctx.fillRect(i * bw + 0.5, trackH - bh, Math.max(1, bw - 1), bh);
+    }
+
+    // highlight markers (triangles along the top edge)
+    const s = this.store;
+    if (s.showHighlights) {
+      for (const h of s.filteredHighlights()) {
+        const frac = s.durationMs > 0 ? (h.startTimestamp - s.startTimeMs) / s.durationMs : 0;
+        if (frac < 0 || frac > 1) continue;
+        const x = frac * w;
+        const selected =
+          s.selection?.kind === "highlight" && s.selection.highlightId === h.id;
+        ctx.fillStyle =
+          h.severity === "high"
+            ? "#f472b6"
+            : h.severity === "notice"
+              ? "#fbbf24"
+              : "#38bdf8";
+        ctx.beginPath();
+        ctx.moveTo(x, 2);
+        ctx.lineTo(x - 5, 12);
+        ctx.lineTo(x + 5, 12);
+        ctx.closePath();
+        ctx.fill();
+        if (selected) {
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+      }
     }
 
     // playhead
