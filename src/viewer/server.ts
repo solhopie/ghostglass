@@ -37,6 +37,13 @@ import type { LiveSessionLike, LiveSubscriber } from "../live/liveSession.js";
 import type { Highlight } from "../highlights/types.js";
 import { readHighlights } from "../highlights/storage.js";
 import { loadHighlightConfig } from "../highlights/config.js";
+import {
+  buildCauseIndex,
+  buildCauseChain,
+  extendCauseIndex,
+  type CauseIndex,
+  type CauseTarget,
+} from "../cause/index.js";
 
 export const DEFAULT_VIEWER_PORT = 7777;
 export const VIEWER_HOST = "127.0.0.1";
@@ -80,6 +87,7 @@ interface CachedRun {
   summary: RunSummary;
   events: GhostGlassEvent[];
   graph: ApiGraph | null;
+  causeIndex: CauseIndex | null;
 }
 
 export interface ViewerServerOptions {
@@ -93,6 +101,8 @@ export class ViewerServer {
   private cache = new Map<string, CachedRun>();
   private diffCache = new Map<string, RunDiff>();
   private liveSessions = new Map<string, LiveSessionLike>();
+  /** Incremental cause indexes for live sessions (extended per batch). */
+  private liveCauseIndexes = new Map<string, CauseIndex>();
   private readonly cwd: string;
   private readonly host: string;
   private readonly preferredPort: number;
@@ -112,6 +122,7 @@ export class ViewerServer {
   /** Remove a live session (after finalization); drops cached run data. */
   unregisterLiveSession(runId: string): void {
     this.liveSessions.delete(runId);
+    this.liveCauseIndexes.delete(runId);
     this.cache.delete(runId);
   }
 
@@ -200,9 +211,43 @@ export class ViewerServer {
         // skip malformed lines, mirroring the tracer's leniency
       }
     }
-    const entry: CachedRun = { metadata, summary, events, graph: null };
+    const entry: CachedRun = { metadata, summary, events, graph: null, causeIndex: null };
     this.cache.set(runId, entry);
     return entry;
+  }
+
+  /**
+   * Cause index for a run, built once and cached. For live sessions the
+   * index is extended incrementally as new events arrive — never rebuilt
+   * from scratch per query.
+   */
+  private getCauseIndex(runId: string, run: CachedRun): CauseIndex {
+    if (!run.causeIndex) {
+      run.causeIndex = buildCauseIndex(
+        run.events,
+        runId,
+        Date.parse(run.metadata.startTime),
+      );
+    }
+    return run.causeIndex;
+  }
+
+  /**
+   * Cause index for a live session: extended incrementally with events
+   * that arrived since the last query.
+   */
+  private getLiveCauseIndex(session: LiveSessionLike, startTimeMs: number): CauseIndex {
+    let index = this.liveCauseIndexes.get(session.runId);
+    if (!index) {
+      index = buildCauseIndex([], session.runId, startTimeMs);
+      this.liveCauseIndexes.set(session.runId, index);
+    }
+    const total = session.eventsSlice(0, 0).total;
+    if (index.ordered.length < total) {
+      const missing = session.eventsSlice(index.ordered.length, total - index.ordered.length);
+      extendCauseIndex(index, missing.events);
+    }
+    return index;
   }
 
   private async getGraph(runId: string): Promise<ApiGraph | null> {
@@ -441,7 +486,7 @@ export class ViewerServer {
       return;
     }
 
-    const runMatch = path.match(/^\/api\/runs\/([^/]+)(\/graph|\/timeline|\/events)?$/);
+    const runMatch = path.match(/^\/api\/runs\/([^/]+)(\/graph|\/timeline|\/events|\/highlights|\/why)?$/);
     if (runMatch) {
       const rawId = decodeURIComponent(runMatch[1] as string);
       const suffix = runMatch[2] as string | undefined;
@@ -499,6 +544,71 @@ export class ViewerServer {
         }
         const highlights = await this.getHighlights(rawId, run);
         this.json(res, 200, { runId: rawId, highlights });
+        return;
+      }
+      if (suffix === "/why") {
+        // Cause chain for one target. Query params:
+        //   target=event&eventId=... | target=pid&pid=123
+        //   target=file&path=... | target=network&destination=ip:port
+        //   target=highlight&highlightId=...
+        // Live sessions resolve against their incremental in-memory index;
+        // saved runs use the cached per-run index.
+        const targetKind = url.searchParams.get("target");
+        let target: CauseTarget | null = null;
+        if (targetKind === "event" && url.searchParams.get("eventId")) {
+          target = { kind: "event", eventId: url.searchParams.get("eventId") as string };
+        } else if (targetKind === "pid" && url.searchParams.get("pid")) {
+          const pid = Number(url.searchParams.get("pid"));
+          if (Number.isInteger(pid) && pid >= 0) target = { kind: "pid", pid };
+        } else if (targetKind === "file" && url.searchParams.get("path")) {
+          target = { kind: "file", path: url.searchParams.get("path") as string };
+        } else if (targetKind === "network" && url.searchParams.get("destination")) {
+          target = { kind: "network", destination: url.searchParams.get("destination") as string };
+        } else if (targetKind === "highlight" && url.searchParams.get("highlightId")) {
+          target = { kind: "highlight", highlightId: url.searchParams.get("highlightId") as string };
+        }
+        if (!target) {
+          this.json(res, 400, { error: "invalid or missing target parameters" });
+          return;
+        }
+        const live = this.liveSessions.get(rawId);
+        if (live) {
+          const status = live.getStatus();
+          const index = this.getLiveCauseIndex(live, status.startTimeMs);
+          const result = buildCauseChain(
+            { index, commandLine: status.commandLine, highlights: live.getHighlights() },
+            target,
+          );
+          if (!result.ok) {
+            this.json(res, result.ambiguous ? 409 : 404, {
+              error: result.error,
+              ambiguous: result.ambiguous ?? undefined,
+            });
+            return;
+          }
+          this.json(res, 200, { runId: rawId, live: true, chain: result.chain });
+          return;
+        }
+        const run = await this.loadRun(rawId);
+        if (!run) {
+          this.json(res, 404, { error: "run not found" });
+          return;
+        }
+        const index = this.getCauseIndex(rawId, run);
+        const highlights =
+          target.kind === "highlight" ? await this.getHighlights(rawId, run) : undefined;
+        const result = buildCauseChain(
+          { index, commandLine: run.metadata.commandLine, highlights },
+          target,
+        );
+        if (!result.ok) {
+          this.json(res, result.ambiguous ? 409 : 404, {
+            error: result.error,
+            ambiguous: result.ambiguous ?? undefined,
+          });
+          return;
+        }
+        this.json(res, 200, { runId: rawId, chain: result.chain });
         return;
       }
       if (suffix === "/events") {

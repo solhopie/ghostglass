@@ -13,6 +13,7 @@ import type {
   RunMetadata,
   RunSummary,
 } from "./types.js";
+import type { CauseChain } from "./cause/index.js";
 import { eventIndexAt } from "./format.js";
 
 export type Selection =
@@ -21,7 +22,7 @@ export type Selection =
   | { kind: "highlight"; highlightId: string }
   | null;
 
-export type Topic = "data" | "events" | "replay" | "selection" | "filters" | "graph" | "highlights";
+export type Topic = "data" | "events" | "replay" | "selection" | "filters" | "graph" | "highlights" | "causechain";
 
 export interface HighlightFilters {
   category: "all" | HighlightCategory;
@@ -61,6 +62,12 @@ export class Store {
   highlights: Highlight[] = [];
   highlightFilters: HighlightFilters = { category: "all", severity: "all" };
   showHighlights = true;
+
+  // cause chain (Run 7)
+  causeChain: CauseChain | null = null;
+  causePathIndex = 0;
+  causeLoading = false;
+  causeError: string | null = null;
   /**
    * Live mode only: while true the UI reduces expensive animation
    * (no node pulses, slower graph emits). Saved runs never set this.
@@ -279,6 +286,28 @@ export class Store {
     this.emit("replay");
     this.emit("selection");
     this.emit("highlights");
+  }
+
+  /** Show a cause chain (focused view); null returns to the full graph. */
+  setCauseChain(chain: CauseChain | null): void {
+    this.causeChain = chain;
+    this.causePathIndex = 0;
+    this.causeError = null;
+    this.emit("causechain");
+  }
+
+  setCausePathIndex(i: number): void {
+    if (!this.causeChain) return;
+    const n = this.causeChain.paths.length;
+    this.causePathIndex = ((i % n) + n) % n;
+    this.emit("causechain");
+  }
+
+  /** Seek the replay clock to a cause-chain node's timestamp. */
+  seekToCauseNode(timestampMs: number): void {
+    this.pause();
+    this.tMs = Math.max(0, Math.min(this.durationMs, timestampMs - this.startTimeMs));
+    this.emit("replay");
   }
 
   /** Graph node ids related to a highlight (process + file/network from related events). */

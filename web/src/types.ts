@@ -322,3 +322,11 @@ export interface HighlightSummary {
   title: string;
   startTimestamp: number;
 }
+
+/** Cause-chain API envelope (shapes mirror the vendored cause engine). */
+export interface ApiCauseChain {
+  runId: string;
+  live?: boolean | undefined;
+  chain: import("./cause/index.js").CauseChain;
+}
+

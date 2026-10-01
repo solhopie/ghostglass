@@ -5,6 +5,7 @@ import { openCommand } from "./commands/open.js";
 import { diffCommand } from "./commands/diff.js";
 import { exportCommand, exportDiffCommand } from "./commands/export.js";
 import { watchCommand } from "./commands/watch.js";
+import { whyCommand } from "./commands/why.js";
 import { highlightsCommand } from "./commands/highlights.js";
 import { readPackageVersion } from "./version.js";
 
@@ -175,6 +176,40 @@ export function buildProgram(): Command {
     .action(async (runId: string | undefined, options: { json?: boolean }) => {
       await highlightsCommand(runId, { cwd: process.cwd(), json: options.json });
     });
+
+  program
+    .command("why")
+    .description("Show the recorded execution path that led to a file, process, network destination, event, or highlight")
+    .argument("[run-id]", 'run ID, e.g. gg_20260930_001, or "latest" (default)')
+    .option("--event <id>", "Target a specific event by ID")
+    .option("--pid <n>", "Target a process by PID")
+    .option("--file <path>", "Target a file (exact path or unique suffix)")
+    .option("--network <host:port>", "Target a network destination")
+    .option("--highlight <id>", "Target a behavior highlight by ID")
+    .option("--json", "Output the cause chain as JSON for automation")
+    .action(
+      async (
+        runId: string | undefined,
+        options: {
+          json?: boolean;
+          event?: string;
+          pid?: string;
+          file?: string;
+          network?: string;
+          highlight?: string;
+        },
+      ) => {
+        await whyCommand(runId, {
+          cwd: process.cwd(),
+          json: options.json,
+          event: options.event,
+          pid: options.pid,
+          file: options.file,
+          network: options.network,
+          highlight: options.highlight,
+        });
+      },
+    );
 
   return program;
 }

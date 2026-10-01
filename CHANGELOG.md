@@ -3,6 +3,53 @@
 All notable changes to GhostGlass are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.0] - Unreleased
+
+Run 7: cause chains — answer "what chain of execution caused this to happen?"
+for any file, process, network destination, individual event, or behavior
+highlight. Deterministic, explainable, local; based only on recorded
+GhostGlass evidence.
+
+**Important:** Cause chains report recorded execution relationships. They do
+not infer intent, assess risk, or deliver security verdicts. Missing,
+ambiguous, or cyclic ancestry is labeled honestly, never guessed.
+
+### Added
+
+- Cause chain engine (`src/cause/`): one reusable engine powers saved replay,
+  Live Glass, the CLI, exports, and diff. Builds an O(n) index once per run
+  (incrementally extended during live sessions); no full event scan per click.
+- `ghostglass why <run-id|latest> [--event <id>] [--pid <n>] [--file <path>]
+  [--network <host:port>] [--highlight <id>] [--json]`: CLI command showing
+  the recorded execution path leading to the target, with confidence
+  (`DIRECT` / `STRUCTURAL` / `INCOMPLETE`), explanation, and evidence.
+- Saved replay: `/api/runs/:runId/why` endpoint; viewer "Show Cause Chain"
+  buttons on process, file, network, event, and highlight inspectors.
+  Focused overlay with dimmed graph, per-path navigation, confidence badge,
+  evidence panel, and timeline seek. `?why=<kind:value>` deep links.
+- Live Glass: cause chains query the current incremental index; no full
+  rescan per click.
+- Portable HTML export: cause index built lazily from embedded (already
+  redacted) events; chains derived on demand, fully offline. Redaction runs
+  before explanations are generated; original strings never survive export.
+- Diff: per-side "Cause Chain" buttons open each run's replay with an
+  independent `?why=` target. No cross-run causal inference. Ambiguous
+  aggregated process fingerprints never silently trace the first PID.
+- Honest ancestry: orphan processes (spawn not captured) are labeled
+  "parent not captured in this trace"; chains containing them report
+  `INCOMPLETE` confidence. Cyclic ancestry is broken and labeled.
+- File queries accept exact paths and unique suffixes; ambiguous suffixes
+  list all matches. Hostnames shown only when captured, never invented.
+- All trace strings rendered as inert text; no HTML/script injection from
+  malicious filenames, arguments, or malformed Unicode.
+
+### Fixed
+
+- `/api/runs/:runId/highlights` route was unreachable (regex dropped the
+  `/highlights` suffix); restored alongside `/why`.
+- Cause chains no longer emit edges to process nodes missing from the path
+  (orphan ancestry).
+
 ## [0.6.0] - Unreleased
 
 Run 6: behavior highlights — automatically surface notable behavior patterns

@@ -4,6 +4,7 @@
  */
 import type { Store } from "./store.js";
 import type { GhostGlassEvent, GraphNode, Highlight } from "./types.js";
+import type { WhyTarget } from "./api.js";
 import { describeEvent, el, formatCount, formatDuration, formatOffset, text } from "./format.js";
 
 export class InspectorView {
@@ -12,9 +13,19 @@ export class InspectorView {
   constructor(
     private readonly host: HTMLElement,
     private readonly store: Store,
+    private readonly onWhy?: ((target: WhyTarget) => void) | undefined,
   ) {
     store.on("selection", () => this.update());
     store.on("data", () => this.update());
+  }
+
+  /** "Show Cause Chain" button; no-op when no handler is wired. */
+  private whyButton(body: HTMLElement, target: WhyTarget): void {
+    if (!this.onWhy) return;
+    const btn = el("button", "why-btn");
+    text(btn, "Show Cause Chain");
+    btn.addEventListener("click", () => this.onWhy?.(target));
+    body.appendChild(btn);
   }
 
   render(): void {
@@ -128,6 +139,7 @@ export class InspectorView {
       body.appendChild(this.kv("Network connects", formatCount(this.num(s, "networkConnects"))));
       body.appendChild(this.kv("Child processes", formatCount(this.num(s, "childProcesses"))));
       body.appendChild(this.kv("Total events", formatCount(node.eventCount)));
+      if (node.pid != null) this.whyButton(body, { target: "pid", pid: node.pid });
       return;
     }
     if (node.kind === "file") {
@@ -149,6 +161,7 @@ export class InspectorView {
           body.appendChild(this.kv(t.label, `PID ${t.pid}`));
         }
       }
+      this.whyButton(body, { target: "file", path: node.sublabel });
       return;
     }
     // network
@@ -169,10 +182,12 @@ export class InspectorView {
     const note = el("div", "inspector-note");
     text(note, "Hostnames are never guessed — only the observed IP and port are shown.");
     body.appendChild(note);
+    this.whyButton(body, { target: "network", destination: node.label });
   }
 
   private renderHighlight(body: HTMLElement, h: Highlight): void {
     this.heading(body, "highlight", h.title);
+    this.whyButton(body, { target: "highlight", highlightId: h.id });
     body.appendChild(this.kv("Severity", `${h.severity} (behavioral magnitude, not risk)`));
     body.appendChild(this.kv("Rule", h.rule));
     body.appendChild(this.kv("At", `+${formatOffset(h.startTimestamp - this.store.startTimeMs)}`));
@@ -205,6 +220,7 @@ export class InspectorView {
 
   private renderEvent(body: HTMLElement, e: GhostGlassEvent): void {
     this.heading(body, e.type, describeEvent(e, (pid) => this.store.pidLabel(pid)));
+    this.whyButton(body, { target: "event", eventId: e.id });
     body.appendChild(this.kv("Event", e.id));
     body.appendChild(this.kv("Action", e.action));
     body.appendChild(this.kv("Process", `${this.store.pidLabel(e.pid)} (PID ${e.pid})`));

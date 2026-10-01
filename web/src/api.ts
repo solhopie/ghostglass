@@ -1,6 +1,7 @@
 /** Thin fetch client for the local viewer API. Same-origin, no auth. */
 import { getStaticResponse } from "./staticData.js";
 import type {
+  ApiCauseChain,
   ApiGraph,
   ApiRunListItem,
   ApiTimeline,
@@ -77,4 +78,24 @@ export function getLiveStatus(runId: string): Promise<LiveStatusPayload> {
 
 export function getHighlights(runId: string): Promise<{ runId: string; highlights: Highlight[] }> {
   return getJson(`/api/runs/${encodeURIComponent(runId)}/highlights`);
+}
+
+export type WhyTarget =
+  | { target: "event"; eventId: string }
+  | { target: "pid"; pid: number }
+  | { target: "file"; path: string }
+  | { target: "network"; destination: string }
+  | { target: "highlight"; highlightId: string };
+
+export function getCauseChain(
+  runId: string,
+  target: WhyTarget,
+): Promise<ApiCauseChain> {
+  const params = new URLSearchParams({ target: target.target });
+  if (target.target === "event") params.set("eventId", target.eventId);
+  if (target.target === "pid") params.set("pid", String(target.pid));
+  if (target.target === "file") params.set("path", target.path);
+  if (target.target === "network") params.set("destination", target.destination);
+  if (target.target === "highlight") params.set("highlightId", target.highlightId);
+  return getJson(`/api/runs/${encodeURIComponent(runId)}/why?${params.toString()}`);
 }

@@ -213,6 +213,45 @@ Configure thresholds in `.ghostglassrc.json`:
 }
 ```
 
+## Cause Chains
+
+For any file, process, network destination, individual event, or behavior
+highlight, GhostGlass can show the recorded execution path leading to it —
+what chain of execution caused this to happen?
+
+```sh
+ghostglass why latest --file /tmp/work/data.txt
+ghostglass why latest --network 127.0.0.1:5432
+ghostglass why latest --pid 1234
+ghostglass why latest --event evt-abc123
+ghostglass why latest --highlight hl-xyz --json
+```
+
+In the viewer, every inspector (process, file, network, event, highlight) has
+a **Show Cause Chain** button. The chain opens as a focused overlay: the full
+graph dims, the recorded path stays lit, and you can step through multiple
+contributing paths, read the evidence each link is based on, and click any
+node timestamp to seek the replay timeline.
+
+**What it guarantees:**
+- **Recorded evidence only** — every link cites the trace event it came from.
+  No AI, no guessing, no invented hostnames, no inferred intent.
+- **Honest confidence** — `DIRECT` (the target event is in the trace),
+  `STRUCTURAL` (linked through recorded structure), or `INCOMPLETE` (part of
+  the path wasn't captured; missing links are labeled, not guessed).
+- **Separate paths stay separate** — if two unrelated processes touched the
+  same file, you see two paths, not one merged story.
+- **Fast** — the cause index is built once per run (extended incrementally
+  during Live Glass); answering "why" never rescans all events.
+
+**Important:** Cause chains describe *what the trace recorded*, not *why
+someone did it*. They don't assess intent, risk, or safety.
+
+Cause chains work in saved replays, Live Glass, portable HTML exports (derived
+on demand from redacted embedded events, fully offline), and per-side in run
+diffs (`?why=` deep links open each run's own replay — chains are never
+inferred across runs).
+
 ## Compare Runs
 
 ```sh
@@ -365,6 +404,8 @@ ghostglass diff <run-a> <run-b>  # compare two traces side by side
 ghostglass diff latest previous  # compare the two most recent traces
 ghostglass export latest         # portable HTML report (opens from file://)
 ghostglass export-diff <a> <b>   # portable HTML comparison report
+ghostglass highlights latest     # behavior highlights for a trace
+ghostglass why latest --file <path>  # execution path leading to a target
 ```
 
 Each run is stored locally under `.ghostglass/runs/<run-id>/`:

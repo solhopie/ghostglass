@@ -42,14 +42,15 @@
   "name": "ghostglass",
   "scripts": {
     "build": "tsc && npm run build:web && npm run build:export-assets && node -e \"require('node:fs').cpSync('test/fixtures', 'dist/test/fixtures', { recursive: true })\"",
-    "build:web": "tsc -p web && node -e \"require('node:fs').cpSync('web/public', 'web/dist', { recursive: true })\"",
+    "build:web": "npm run vendor:cause-web && tsc -p web && node -e \"require('node:fs').cpSync('web/public', 'web/dist', { recursive: true })\"",
     "clean": "rm -rf dist web/dist",
     "dev": "tsc --watch",
     "lint": "eslint src test web/src",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
-    "typecheck": "tsc --noEmit && tsc -p web --noEmit",
-    "build:export-assets": "esbuild web/src/main.ts --bundle --format=iife --minify --target=es2020 --outfile=dist/export-assets/viewer.js && node -e \"require('node:fs').cpSync('web/dist/styles.css', 'dist/export-assets/styles.css')\""
+    "typecheck": "npm run vendor:cause-web && tsc --noEmit && tsc -p web --noEmit",
+    "vendor:cause-web": "node scripts/vendor-cause-web.cjs",
+    "build:export-assets": "npm run vendor:cause-web && esbuild web/src/main.ts --bundle --format=iife --minify --target=es2020 --outfile=dist/export-assets/viewer.js && node -e \"require('node:fs').cpSync('web/dist/styles.css', 'dist/export-assets/styles.css')\""
   },
   "type": "module",
-  "version": "0.6.0"
+  "version": "0.7.0"
 }

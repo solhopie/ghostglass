@@ -22,6 +22,8 @@ import { LiveHeaderView } from "./liveHeaderView.js";
 import { LiveStore } from "./liveStore.js";
 import { StreamView } from "./streamView.js";
 import { TimelineView } from "./timelineView.js";
+import { CauseChainView } from "./causeChainView.js";
+import { parseWhyTarget } from "./causeChainView.js";
 
 function bootOverlay(message: string): HTMLElement {
   const app = document.getElementById("app") as HTMLElement;
@@ -106,13 +108,19 @@ async function bootRun(runId: string): Promise<void> {
   const headerView = new HeaderView(header, store);
   const graphView = new GraphView(graphSection, store);
   const streamView = new StreamView(streamHost, store);
-  const inspectorView = new InspectorView(inspectorHost, store);
+  const causeHost = el("div", "gg-causechain");
+  app.appendChild(causeHost);
+  const causeChainView = new CauseChainView(causeHost, store);
+  const inspectorView = new InspectorView(inspectorHost, store, (target) => {
+    void causeChainView.showFor(store.runId, target);
+  });
   const timelineView = new TimelineView(footer, store);
   const highlightHost = el("div", "gg-highlights");
   side.appendChild(highlightHost);
   const highlightPanel = new HighlightPanel(highlightHost, store);
   void graphView;
   void inspectorView;
+  void causeChainView;
 
   headerView.render();
   streamView.render();
@@ -134,6 +142,9 @@ async function bootRun(runId: string): Promise<void> {
     inspectorView.render();
     timelineView.render();
     highlightPanel.render();
+    // Deep link: /runs/<id>?why=<kind:value> opens the cause chain directly.
+    const whyTarget = parseWhyTarget(new URLSearchParams(window.location.search).get("why"));
+    if (whyTarget) void causeChainView.showFor(store.runId, whyTarget);
     // Stream events in the background; replay works off the timeline immediately.
     await streamView.loadAll(runId, (offset, limit) => getEventsPage(runId, offset, limit));
   } catch (err) {
@@ -170,7 +181,12 @@ async function bootLive(runId: string): Promise<void> {
   const headerView = new LiveHeaderView(header, store);
   const graphView = new GraphView(graphSection, store);
   const streamView = new StreamView(streamHost, store);
-  const inspectorView = new InspectorView(inspectorHost, store);
+  const causeHost = el("div", "gg-causechain");
+  app.appendChild(causeHost);
+  const causeChainView = new CauseChainView(causeHost, store);
+  const inspectorView = new InspectorView(inspectorHost, store, (target) => {
+    void causeChainView.showFor(store.runId, target);
+  });
   const timelineView = new TimelineView(footer, store);
   const highlightHost = el("div", "gg-highlights");
   side.appendChild(highlightHost);
@@ -179,6 +195,7 @@ async function bootLive(runId: string): Promise<void> {
   void streamView;
   void inspectorView;
   void timelineView;
+  void causeChainView;
 
   headerView.render();
   streamView.render();
