@@ -89,6 +89,7 @@ async function bootPicker(): Promise<void> {
 async function bootRun(runId: string): Promise<void> {
   const app = document.getElementById("app") as HTMLElement;
   app.innerHTML = "";
+  app.classList.add("has-querybar");
 
   const header = el("header", "gg-header");
   const queryHost = el("div", "gg-querybar");
@@ -171,6 +172,7 @@ async function bootLive(runId: string): Promise<void> {
   document.title = `GhostGlass Live — ${runId}`;
   const app = document.getElementById("app") as HTMLElement;
   app.innerHTML = "";
+  app.classList.add("has-querybar");
 
   const header = el("header", "gg-header");
   const queryHost = el("div", "gg-querybar");
@@ -241,6 +243,7 @@ async function bootLive(runId: string): Promise<void> {
 async function bootDiff(runA: string, runB: string): Promise<void> {
   const app = document.getElementById("app") as HTMLElement;
   app.innerHTML = "";
+  app.classList.remove("has-querybar");
 
   const header = el("header", "diff-page-head");
   const graphSection = el("section", "diff-page-graph");

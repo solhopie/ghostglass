@@ -34,6 +34,12 @@ html, body {
   overflow: hidden;
 }
 
+/* Saved-run replay and Live Glass include the trace query bar between the
+   header and the main content, so they need an extra auto row for it. */
+#app.has-querybar {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.22); border-radius: 6px; border: 2px solid var(--bg); }

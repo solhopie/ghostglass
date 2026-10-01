@@ -3,7 +3,7 @@
 All notable changes to GhostGlass are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.9.0] - Unreleased
+## [0.9.0] - 2026-10-01 (development milestone, untagged)
 
 Run 9: Trace Query Engine — one deterministic structured query engine shared
 by the CLI, saved viewer, Live Glass, portable exports, and diff. No AI, no
@@ -66,7 +66,56 @@ compound queries ~40–105ms, full text scan ~0.24–0.33s, incremental scan
 - Replay seeking used sorted-timestamps indexes into emission-ordered
   events, mis-seeking on traces with reconstructed syscalls.
 
-## [0.8.0] - Unreleased
+## [Unreleased] - Run 10: Public Release Prep
+
+Release engineering and polish only — no new product features.
+
+### Fixed
+
+- The Run 9 query bar existed in the DOM but was visually squeezed to 8px
+  and never painted: `#app` had three grid rows for four layout children
+  (header, query bar, main, footer). `bootRun`/`bootLive` now opt `#app`
+  into a four-row layout via the `has-querybar` class; `bootDiff` stays on
+  three rows. Regression tests in `test/querybar-layout.test.ts` boot the
+  real viewer through `main.ts` and assert the class is applied.
+
+### Added
+
+- Rebuilt README: one-screen project summary, honest feature list, real
+  screenshots, `npm run demo`, command table, query semantics, privacy
+  section, and current limitations.
+- `docs/architecture.md`: the full pipeline
+  (command → `strace -f` → line assembly → split-syscall reconstruction →
+  normalization → `events.jsonl` → indexes → replay/live/query/highlights/
+  cause/diff/export) and component map.
+- `docs/trace-format.md`: `metadata.json`, `events.jsonl`, `summary.json`,
+  `highlights.json`, timestamp vs sequence semantics, backward
+  compatibility for old traces.
+- `docs/releases/preview.md`: the v1 feature set (not v1.0) with known
+  limitations.
+- `docs/PUBLISHING.md`: the exact human-owner steps remaining before the
+  repository can go public (identity, GitHub repo, placeholders, CI,
+  screenshots, release/tag decisions).
+- `.github/workflows/ci.yml`: typecheck, lint, test, build on Ubuntu with
+  strace. No secrets, no publishing, no deployment.
+- `npm run demo`: traces the bundled deterministic demo fixture and opens
+  the result.
+- Real screenshots in `docs/assets/`: viewer overview, query filtering,
+  behavior highlights, cause chain, run diff, portable export. (Live Glass
+  screenshot pending a real-browser capture; streaming itself is
+  implemented and tested.)
+
+### Changed
+
+- `package.json` `files`: the npm tarball no longer ships compiled tests
+  (`dist/test/`). Package: 270.5 kB, 1.2 MB unpacked, 244 files.
+- `CONTRIBUTING.md`: generated-code rule (never hand-edit `web/src/query/`),
+  fixture philosophy, current project layout.
+- `SECURITY.md`: local-first threat model, trace sensitivity, viewer
+  network model, no-remote-fetching statement.
+- Issue/PR templates: trace-format compatibility checklist, redaction
+  warnings, GhostGlass-fit question for features.
+- `CHANGELOG.md`: 0.5.0–0.9.0 marked as untagged development milestones.
 
 Run 8: split-syscall reconstruction — reliably rejoin strace
 `<unfinished ...>` / `<... resumed>` syscall pairs that were previously
@@ -119,7 +168,7 @@ unparsed rather than guessed — never fabricated.
   it cannot pair deterministically (orphan resumes, mismatches, second
   unfinished before resume). These are counted as diagnostics, never guessed.
 
-## [0.7.0] - Unreleased
+## [0.7.0] - 2026-10-01 (development milestone, untagged)
 
 Run 7: cause chains — answer "what chain of execution caused this to happen?"
 for any file, process, network destination, individual event, or behavior
@@ -166,7 +215,7 @@ ambiguous, or cyclic ancestry is labeled honestly, never guessed.
 - Cause chains no longer emit edges to process nodes missing from the path
   (orphan ancestry).
 
-## [0.6.0] - Unreleased
+## [0.6.0] - 2026-09-30 (development milestone, untagged)
 
 Run 6: behavior highlights — automatically surface notable behavior patterns
 from your trace. Deterministic, rule-based, local; no AI, no external lookups.
@@ -197,7 +246,7 @@ intent, risk, or safety.
 - Demo fixture `test/fixtures/highlights-demo.cjs` generating deterministic
   highlights.
 
-## [0.5.0] - Unreleased
+## [0.5.0] - 2026-09-30 (development milestone, untagged)
 
 Run 5: live glass — watch what your command is doing while it is doing it.
 

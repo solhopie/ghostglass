@@ -1,28 +1,57 @@
-# Security Policy
+# Security
 
-## Reporting a vulnerability
+## Local-first threat model
 
-If you discover a security vulnerability in GhostGlass, please report it
-through **GitHub's private vulnerability reporting** feature on the
-repository (Security tab → "Report a vulnerability"). This keeps the details
-private while the issue is triaged and fixed.
+GhostGlass is a local-first tool. There are no accounts, no cloud
+sync, no telemetry, and no AI. The security surface is deliberately small:
 
-Please do not open a public issue for a suspected vulnerability.
+- **The trace itself** — stored on your machine, may contain sensitive data.
+- **The viewer** — binds to `127.0.0.1` by default, serves only GhostGlass run data.
+- **Portable exports** — self-contained HTML you explicitly create and share.
 
-## What to know
+There is no authentication because there is no remote surface: the viewer
+is reachable only from your machine. If you need to expose a viewer to
+others, run it behind your own authenticated reverse proxy — GhostGlass
+does not provide one.
 
-GhostGlass processes potentially sensitive local system traces: a trace can
-contain file paths, command lines, process relationships, and network
-destinations from the machine it was recorded on. When sharing traces for
-debugging — even in private reports — redact anything sensitive first
-(usernames in paths, internal hostnames and IPs, credentials or tokens in
-arguments).
+## Trace sensitivity
 
-The replay viewer (`ghostglass open`) is a local-only HTTP server that
-binds to `127.0.0.1` by default and serves only GhostGlass run data. Do not
-expose it to a network you do not trust, and treat trace strings as
-untrusted input: the viewer renders them as inert text, but any bug in that
-handling should be reported as a vulnerability.
+Traces record what your machine actually did. They can contain:
+
+- file paths (including home directory structure)
+- command arguments (flags, filenames, URLs, connection strings you typed)
+- process names and executable paths
+- network destinations (IPs, ports)
+
+**Do not paste unredacted traces into issue reports, chat channels, or
+bug reports** — even private ones. The `--redact-home`, `--redact-cwd`,
+`--redact-network`, and `--redact-args` export flags exist for this. The
+saved trace on disk is never modified by redaction — only the exported
+copy.
+
+Environment variable *values* are never written into a trace: `execve`
+lines record only the argument vector, never the environment.
+
+## Viewer network model
+
+- The viewer binds to `127.0.0.1` by default. `--host 0.0.0.0` is
+  available but exposes run data to your network — use it only where you
+  mean to.
+- The viewer serves only files from `.ghostglass/runs/` (run data) and
+  its own bundled frontend assets. It does not serve arbitrary files.
+- Exported HTML opens from `file://` with CSP `connect-src 'none'` —
+  zero network requests, verified in tests.
+- Trace strings are rendered as inert text in the viewer (tested with
+  hostile payloads), but any bug in that handling should be reported as a
+  vulnerability.
+
+## No remote fetching
+
+GhostGlass makes no network requests of its own: no update checks, no
+telemetry, no AI, no DNS resolution of traced hostnames (IPs are
+recorded as captured), and no automatic uploads. The only sockets it
+opens are the local viewer port and, during `watch`, the SSE stream from
+your own machine to your own browser.
 
 ## Scope
 
@@ -32,3 +61,11 @@ handling should be reported as a vulnerability.
 
 Out of scope: the security of `strace` itself, the operating system, or
 third-party commands that a user chooses to trace.
+
+## Responsible disclosure
+
+If you find a security issue, please use the repository's private
+vulnerability reporting (Security tab → "Report a vulnerability") once
+the repository is public and the feature is enabled. Until then, do not
+open a public issue for a suspected vulnerability, and do not include
+unredacted traces in any report.

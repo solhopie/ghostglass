@@ -21,7 +21,8 @@
     "node": ">=18"
   },
   "files": [
-    "dist",
+    "dist/src",
+    "dist/export-assets",
     "web/dist",
     "README.md",
     "LICENSE"
@@ -44,6 +45,7 @@
     "build": "tsc && npm run build:web && npm run build:export-assets && node -e \"require('node:fs').cpSync('test/fixtures', 'dist/test/fixtures', { recursive: true })\"",
     "build:web": "npm run vendor:cause-web && npm run vendor:query-web && tsc -p web && node -e \"require('node:fs').cpSync('web/public', 'web/dist', { recursive: true })\"",
     "clean": "rm -rf dist web/dist",
+    "demo": "npm run build && node dist/src/cli.js run -- node test/fixtures/demo.cjs && node dist/src/cli.js open latest",
     "dev": "tsc --watch",
     "lint": "eslint src test web/src",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\"",

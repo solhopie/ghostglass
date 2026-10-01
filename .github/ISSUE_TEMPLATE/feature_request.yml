@@ -16,17 +16,23 @@ body:
     validations:
       required: true
   - type: textarea
-    id: proposal
+    id: workflow
     attributes:
-      label: Proposed solution
-      description: What should GhostGlass do?
+      label: Proposed workflow
+      description: How would a user do this with GhostGlass?
     validations:
       required: true
   - type: textarea
-    id: alternatives
+    id: command
     attributes:
-      label: Alternatives considered
-      description: Other ways to solve it, and why they fall short
+      label: Example command
+      description: The ghostglass command(s) this would add or change
+      render: shell
+  - type: textarea
+    id: fit
+    attributes:
+      label: Why it belongs in GhostGlass
+      description: Why is this a tracing/replay problem rather than something else?
   - type: textarea
     id: extra
     attributes:
