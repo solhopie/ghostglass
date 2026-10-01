@@ -6,6 +6,7 @@ import type {
   GhostGlassEventAction,
   GhostGlassEventType,
 } from "../events/types.js";
+import type { ReconstructionDiagnostics } from "./pendingSyscalls.js";
 
 /**
  * Translates raw strace output into normalized GhostGlass events.
@@ -29,6 +30,11 @@ export interface TraceParseStats {
   skipped: number;
   /** Lines that did not match any known strace line shape. */
   malformed: number;
+  /**
+   * Split-syscall reconstruction health (Run 8). Parser diagnostics only —
+   * not execution behavior, never mixed with behavior highlights.
+   */
+  reconstruction?: ReconstructionDiagnostics | undefined;
 }
 
 export interface ParsedTrace {
@@ -473,8 +479,11 @@ export function createParseContext(runId: string, startTimeMs: number): ParseCon
 }
 
 /**
- * Parse a full strace log file into normalized, chronological events.
- * strace -f serializes output chronologically, so file order is event order.
+ * Parse a full strace log file into normalized events.
+ * strace -f serializes output chronologically, so file order is event order,
+ * with one honest exception: reconstructed split syscalls carry the
+ * syscall-start timestamp but are emitted when the resumed fragment arrives,
+ * so they may slightly precede already-emitted events.
  *
  * Implemented on top of the incremental stream parser, so batch and live
  * parsing share identical logic and statistics.

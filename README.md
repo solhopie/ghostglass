@@ -507,8 +507,11 @@ Honest constraints, documented instead of faked:
   (e.g. `ENOENT` path probing) are not presented as file activity.
   `connect` is the exception: attempts are recorded even when refused or
   still in progress, because the attempt itself is the signal.
-- **`<unfinished>` / `<... resumed>` syscall fragments are skipped** rather
-  than reconstructed — we never invent the missing half of a syscall.
+- **`<unfinished>` / `<... resumed>` syscall pairs are reconstructed** when
+  GhostGlass can pair the fragments deterministically (same PID, same syscall
+  name, pending start exists). The rejoined syscall is parsed exactly like an
+  unsplit one; unresolved or mismatched fragments are counted as parser
+  diagnostics and never guessed.
 - **Live view needs the watch process.** Closing the terminal that runs
   `ghostglass watch` ends the live session; the saved trace remains for
   replay. A viewer that falls more than ~2 MB behind the event stream is
@@ -533,6 +536,9 @@ Completed:
 - [x] Run comparison (`ghostglass diff`)
 - [x] HTML trace export (portable single-file reports)
 - [x] Live tracing (`ghostglass watch`)
+- [x] Behavior highlights
+- [x] Cause chains ("what chain of execution caused this?")
+- [x] Split-syscall reconstruction (`<unfinished>` / `<... resumed>` pairing)
 
 Upcoming:
 

@@ -32,6 +32,19 @@ export interface RunSummary {
   eventCount: number;
   filesystem: FilesystemStats;
   network: NetworkStats;
+  /** Parser health (optional; present for runs traced with Run 8+). */
+  parseStats?: {
+    totalLines: number;
+    events: number;
+    skipped: number;
+    malformed: number;
+    reconstruction?: {
+      reconstructed: number;
+      unresolved: number;
+      orphanResumed: number;
+      mismatched: number;
+    };
+  };
 }
 
 const EMPTY_FS: FilesystemStats = {

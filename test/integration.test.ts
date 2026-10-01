@@ -132,12 +132,19 @@ describe("ghostglass end-to-end tracing", { skip: !STRACE_AVAILABLE }, () => {
 
     const events = readJsonl(join(runDir, "events.jsonl"));
     assert.ok(events.length > 50, `expected a rich trace, got ${events.length} events`);
-    // Chronological order.
-    for (let i = 1; i < events.length; i++) {
-      assert.ok(
-        (events[i] as GhostGlassEvent).timestamp >= (events[i - 1] as GhostGlassEvent).timestamp,
-        "events.jsonl is chronological",
-      );
+    // Chronological order, with one honest exception: reconstructed events
+    // carry the syscall-start timestamp but are emitted when the resumed
+    // fragment arrives, so they may slightly precede already-emitted events.
+    let prevTs = -Infinity;
+    for (const e of events) {
+      const ev = e as GhostGlassEvent;
+      if (!ev.metadata?.["reconstructed"]) {
+        assert.ok(
+          ev.timestamp >= prevTs,
+          "events.jsonl is chronological",
+        );
+        prevTs = ev.timestamp;
+      }
     }
     // The fixture's file lifecycle appears in the trace.
     assert.ok(

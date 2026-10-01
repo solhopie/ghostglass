@@ -52,5 +52,5 @@
     "build:export-assets": "npm run vendor:cause-web && esbuild web/src/main.ts --bundle --format=iife --minify --target=es2020 --outfile=dist/export-assets/viewer.js && node -e \"require('node:fs').cpSync('web/dist/styles.css', 'dist/export-assets/styles.css')\""
   },
   "type": "module",
-  "version": "0.7.0"
+  "version": "0.8.0"
 }

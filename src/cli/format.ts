@@ -63,6 +63,16 @@ export function formatSummaryText(
     lines.push(chalk.dim("  • none observed"));
   }
   lines.push(`${section("Trace saved:")} .ghostglass/runs/${metadata.runId}/`);
+  // Parser diagnostics: shown only when split-syscall reconstruction did
+  // something worth reporting. Unobtrusive by design.
+  const recon = summary.parseStats?.reconstruction;
+  if (recon && (recon.reconstructed > 0 || recon.unresolved > 0 || recon.orphanResumed > 0 || recon.mismatched > 0)) {
+    const parts = [`${recon.reconstructed} split syscall${recon.reconstructed === 1 ? "" : "s"} reconstructed`];
+    if (recon.unresolved > 0) parts.push(`${recon.unresolved} unresolved`);
+    if (recon.orphanResumed > 0) parts.push(`${recon.orphanResumed} orphaned resumes`);
+    if (recon.mismatched > 0) parts.push(`${recon.mismatched} mismatched`);
+    lines.push(chalk.dim(`Parser:        ${parts.join(", ")}`));
+  }
   return lines.join("\n");
 }
 

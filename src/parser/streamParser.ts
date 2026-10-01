@@ -5,6 +5,8 @@ import {
   type ParseContext,
   type TraceParseStats,
 } from "./straceParser.js";
+import { SyscallReconstructor } from "./syscallReconstructor.js";
+import type { ReconstructionDiagnostics } from "./pendingSyscalls.js";
 
 /**
  * Incremental strace parser for live tracing.
@@ -14,6 +16,12 @@ import {
  * multiple lines per chunk, and lines split across chunks. `flush` parses
  * any trailing unterminated line at end of stream.
  *
+ * Between line assembly and syscall parsing sits the split-syscall
+ * reconstructor: strace `<unfinished ...>` / `<... resumed>` fragment pairs
+ * are deterministically re-joined into canonical complete lines before
+ * normal parsing, so batch and live parsing share one code path and can
+ * never diverge.
+ *
  * This is the same parsing logic as the batch parser (`parseLine`): the
  * batch `parseTraceFile` is implemented on top of this class, so live and
  * recorded parsing can never diverge.
@@ -21,6 +29,7 @@ import {
 export class StraceStreamParser {
   private buffer = "";
   private readonly ctx: ParseContext;
+  private readonly reconstructor = new SyscallReconstructor();
   private readonly stats: TraceParseStats = {
     totalLines: 0,
     events: 0,
@@ -52,21 +61,31 @@ export class StraceStreamParser {
 
   /**
    * End of stream: parse the trailing buffer (if it holds a non-blank
-   * unterminated line) and return any event it yields.
+   * unterminated line), finalize split-syscall reconstruction (unresolved
+   * fragments are counted as diagnostics, never turned into events), and
+   * return any event the trailing line yields.
    */
   flush(): GhostGlassEvent[] {
-    if (!this.buffer.trim()) {
+    const out: GhostGlassEvent[] = [];
+    if (this.buffer.trim()) {
+      const line = this.buffer;
       this.buffer = "";
-      return [];
+      const event = this.processLine(line);
+      if (event) out.push(event);
+    } else {
+      this.buffer = "";
     }
-    const line = this.buffer;
-    this.buffer = "";
-    const event = this.processLine(line);
-    return event ? [event] : [];
+    this.reconstructor.finish();
+    return out;
   }
 
   getStats(): TraceParseStats {
-    return { ...this.stats };
+    return { ...this.stats, reconstruction: this.reconstructor.getDiagnostics() };
+  }
+
+  /** Parser-health counters for split-syscall reconstruction. */
+  getReconstructionDiagnostics(): ReconstructionDiagnostics {
+    return this.reconstructor.getDiagnostics();
   }
 
   get rootPid(): number | undefined {
@@ -84,8 +103,25 @@ export class StraceStreamParser {
   private processLine(rawLine: string): GhostGlassEvent | null {
     if (!rawLine.trim()) return null;
     this.stats.totalLines++;
-    const event = parseLine(rawLine, this.ctx);
+
+    // Split-syscall reconstruction runs before normal parsing. A "held"
+    // unfinished fragment produces no event yet; a reconstructed line is
+    // parsed exactly like an unsplit syscall and tagged in metadata.
+    const fragment = this.reconstructor.processLine(rawLine);
+    if (fragment.kind === "held" || fragment.kind === "dropped") {
+      this.stats.skipped++;
+      return null;
+    }
+    const lineToParse =
+      fragment.kind === "reconstructed" ? fragment.line : rawLine;
+    const event = parseLine(lineToParse, this.ctx);
     if (event) {
+      if (fragment.kind === "reconstructed") {
+        event.metadata = {
+          ...event.metadata,
+          reconstructed: true,
+        };
+      }
       this.stats.events++;
       return event;
     }

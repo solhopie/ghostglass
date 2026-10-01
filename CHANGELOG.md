@@ -3,6 +3,59 @@
 All notable changes to GhostGlass are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.0] - Unreleased
+
+Run 8: split-syscall reconstruction — reliably rejoin strace
+`<unfinished ...>` / `<... resumed>` syscall pairs that were previously
+dropped, repairing process trees, Live Glass graphs, Cause Chain ancestry,
+process counts, diffs, and process-related highlights.
+
+**Important:** GhostGlass only reconstructs fragments when PID and syscall
+identity match deterministically. Unresolved or mismatched fragments remain
+unparsed rather than guessed — never fabricated.
+
+### Added
+
+- Split-syscall reconstruction layer (`src/parser/pendingSyscalls.ts`,
+  `src/parser/syscallReconstructor.ts`): dedicated subsystem, one
+  implementation shared by batch parsing and Live Glass streaming.
+- Per-PID pending state (`Map<number, PendingSyscall>`); never a single
+  global fragment. Interleaved PIDs reconstruct independently.
+- Deterministic pairing rules: PID must match, syscall name must match, and
+  an unfinished start must be pending. Mismatched resumes are dropped with a
+  diagnostic; the pending start is kept for its real completion.
+- Canonical reconstruction: fragments are rejoined into the equivalent of an
+  unsplit line (`PID TIMESTAMP name(args) = ret`) and passed through the
+  existing parser untouched — reconstructed syscalls behave exactly like
+  normal complete ones (a failed resumed `clone` still creates no child).
+- Timestamp semantics: the syscall *start* timestamp is used; no invented
+  midpoints.
+- `reconstructed: true` metadata flag on events parsed from rejoined lines.
+- Parser diagnostics (parser-health counters, not behavior data):
+  `reconstructed`, `unresolved`, `orphanResumed`, `mismatched`. Exposed via
+  `getStats().reconstruction` and shown unobtrusively in `ghostglass show`
+  only when something is worth reporting.
+- Pending-entry bound (10,000) against unbounded memory growth on malformed
+  input; pending state cleared on process exit and at end of trace (no
+  cross-run leakage, PID-reuse safe).
+
+### Fixed
+
+- Process-creation syscalls split across unfinished/resumed pairs (`clone`,
+  `clone3`, `fork`, `vfork`) now produce correct parent→child spawn events.
+- Split file syscalls (`open`, `openat`, `read`, `write`, `rename`, `unlink`,
+  `mkdir`, …) and split `connect` now produce their normal events.
+- Cause Chain: previously-orphaned ancestry is repaired when the evidence
+  exists; genuinely missing evidence still reports `INCOMPLETE`.
+- Live Glass: reconstructed events stream exactly once, on arrival of the
+  resumed fragment — no premature event at the unfinished fragment.
+
+### Known limitations
+
+- The tracing parser drops some `<unfinished ...>` / `<... resumed>` pairs
+  it cannot pair deterministically (orphan resumes, mismatches, second
+  unfinished before resume). These are counted as diagnostics, never guessed.
+
 ## [0.7.0] - Unreleased
 
 Run 7: cause chains — answer "what chain of execution caused this to happen?"
