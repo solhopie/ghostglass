@@ -2,6 +2,9 @@
   "bin": {
     "ghostglass": "dist/src/cli.js"
   },
+  "bugs": {
+    "url": "https://github.com/solhopie/ghostglass/issues"
+  },
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^12.1.0"
@@ -27,6 +30,7 @@
     "README.md",
     "LICENSE"
   ],
+  "homepage": "https://github.com/solhopie/ghostglass#readme",
   "keywords": [
     "tracing",
     "strace",
@@ -41,6 +45,10 @@
   ],
   "license": "MIT",
   "name": "ghostglass",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/solhopie/ghostglass.git"
+  },
   "scripts": {
     "build": "tsc && npm run build:web && npm run build:export-assets && node -e \"require('node:fs').cpSync('test/fixtures', 'dist/test/fixtures', { recursive: true })\"",
     "build:web": "npm run vendor:cause-web && npm run vendor:query-web && tsc -p web && node -e \"require('node:fs').cpSync('web/public', 'web/dist', { recursive: true })\"",

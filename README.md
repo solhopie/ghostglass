@@ -1,4 +1,9 @@
 # GhostGlass
+
+[![CI](https://github.com/solhopie/ghostglass/actions/workflows/ci.yml/badge.svg)](https://github.com/solhopie/ghostglass/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](package.json)
+
 **See what your commands are doing when you're not looking.**
 GhostGlass is a local-first Linux execution tracer that records process, filesystem, and network activity and turns it into an interactive visual timeline.
 
@@ -144,14 +149,11 @@ npm run demo:watch
 visual viewer.
 
 ```sh
-git clone https://github.com/<your-username>/ghostglass.git
+git clone https://github.com/solhopie/ghostglass.git
 cd ghostglass
 npm install
 npm run build
 ```
-
-(`<your-username>` is a placeholder — replace it with the actual GitHub
-user or organization when the repository is published.)
 
 Then trace the bundled demo fixture (deterministic, offline, no installs):
 
