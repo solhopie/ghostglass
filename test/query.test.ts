@@ -232,6 +232,9 @@ describe("query matcher", () => {
     assert.ok(!matchGlob("/tmp/*.log", "/tmp/a.log/b.txt"), "tail must still match");
     assert.ok(!matchGlob("/tmp/*.log", "/var/a.log"));
     assert.ok(!matchGlob("abc", "abcd"));
+    assert.ok(!matchGlob("a?b", "a/b"), "? never crosses / by design");
+    assert.ok(matchGlob("/tmp/???.log", "/tmp/abc.log"), "? matches one non-/ char");
+    assert.ok(!matchGlob("/tmp/???.log", "/tmp/ab/c.log"), "? cannot stand in for /");
   });
   it("matchFile matches exact path, basename, or suffix (no globs)", () => {
     assert.ok(matchFile("/etc/hostname", "/etc/hostname"));

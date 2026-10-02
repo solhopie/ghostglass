@@ -44,8 +44,9 @@ export function matchFile(query: string, path: string | undefined): boolean {
 
 /**
  * Linear-time glob match supporting `*` (any run of chars, including `/`)
- * and `?` (exactly one char). All other characters match literally.
- * Two-pointer algorithm: O(pattern + text), no backtracking explosion.
+ * and `?` (exactly one char, never `/`). All other characters match
+ * literally. Two-pointer algorithm: O(pattern + text), no backtracking
+ * explosion.
  */
 export function matchGlob(pattern: string, text: string): boolean {
   let px = 0;
@@ -54,7 +55,8 @@ export function matchGlob(pattern: string, text: string): boolean {
   let starTx = 0;
   while (tx < text.length) {
     const pc = pattern[px];
-    if (px < pattern.length && (pc === "?" || pc === text[tx])) {
+    const tc = text[tx];
+    if (px < pattern.length && (pc === tc || (pc === "?" && tc !== "/"))) {
       px++;
       tx++;
     } else if (px < pattern.length && pc === "*") {
